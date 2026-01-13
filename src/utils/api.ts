@@ -69,7 +69,7 @@ function isSemanticallySimilar(spec1: string, spec2: string): boolean {
   
   const synonymGroups = [
     ['material', 'composition', 'fabric'],
-    ['grade', 'quality', 'class', 'standard'],
+    ['grade', 'quality', 'class'],
     ['thickness', 'thk', 'gauge'],
     ['size', 'dimension', 'measurement'],
     ['diameter', 'dia', 'bore'],
@@ -1041,6 +1041,8 @@ function buildISQExtractionPrompt(
 
 Extract specifications from these URLs for: ${mcatName}
 
+IMPORTANT: You have been provided with ${urls.length} URLs. You MUST analyze ALL ${urls.length} URLs and extract specifications that appear across them.
+
 URLs:
 ${urlsText}
 
@@ -1056,6 +1058,7 @@ CRITICAL RELEVANCE RULES:
 3. DO NOT include specifications already in the MCAT name
 4. DO NOT include "Other" or "etc." or "N/A" options
 5. ONLY include specs that appear multiple times across URLs
+6. You MUST extract at least 2 relevant specifications if they exist across the URLs
 
 IMPORTANT RANGE HANDLING RULES:
 1. If you find overlapping ranges (e.g., "0.14-2.00 mm" and "0.25-2.00 mm"), 
@@ -1067,14 +1070,15 @@ IMPORTANT RANGE HANDLING RULES:
 6. DO NOT use "Range" as a specification name. Use the actual specification name like "Thickness", "Diameter", etc.
 
 INSTRUCTIONS:
-1. Extract all RELEVANT specifications from all URLs
+1. Extract all RELEVANT specifications from ALL ${urls.length} URLs provided
 2. Combine equivalent specifications and options
 3. Select 1 CONFIG specification IF FOUND (highest frequency, most price-affecting)
-4. Select UP TO 3 KEY specifications IF FOUND (next highest frequency)
+4. Select AT LEAST 2 KEY specifications if they exist across URLs (up to 3 maximum)
 5. Options must be the ones most repeated across URLs
-6. Maximum 8 options per specification
+6. Maximum 8 options per CONFIG specification, 6 options per KEY specification
 7. If you cannot find enough relevant specs, output what you find (don't make up specs)
-8. Try to find 2 specifications atleast
+8. CRITICAL: You MUST try to extract at least 2 relevant specifications total (1 config + at least 1 key, OR 2+ keys if no config found)
+9. Analyze ALL URLs - do not stop after finding specs in just 1 or 2 URLs
 
 OUTPUT FORMAT:
 
@@ -1115,10 +1119,12 @@ function areOptionsStronglySimilar(opt1: string, opt2: string): boolean {
   const noSpace2 = clean2.replace(/\s+/g, '');
   if (noSpace1 === noSpace2) return true;
   
-  // Material and grade equivalences
+  // Material and grade equivalences - MUST MATCH EXACT GRADE
   const materialGroups = [
     ['304', 'ss304', 'ss 304', 'stainless steel 304'],
+    ['304l', 'ss304l', 'ss 304l', 'stainless steel 304l'],
     ['316', 'ss316', 'ss 316', 'stainless steel 316'],
+    ['316l', 'ss316l', 'ss 316l', 'stainless steel 316l'],
     ['430', 'ss430', 'ss 430'],
     ['201', 'ss201', 'ss 201'],
     ['202', 'ss202', 'ss 202'],
@@ -1126,15 +1132,24 @@ function areOptionsStronglySimilar(opt1: string, opt2: string): boolean {
     ['gi', 'galvanized iron'],
     ['aluminium', 'aluminum'],
   ];
-  
+
   for (const group of materialGroups) {
     const inGroup1 = group.some(term => clean1.includes(term));
     const inGroup2 = group.some(term => clean2.includes(term));
     if (inGroup1 && inGroup2) {
-      // Check if same numeric grade
-      const num1 = clean1.match(/\b(\d+)\b/)?.[1];
-      const num2 = clean2.match(/\b(\d+)\b/)?.[1];
-      if (num1 && num2 && num1 !== num2) return false;
+      // CRITICAL: Check for exact grade match including suffixes like 'L'
+      const extractGrade = (str: string) => {
+        // Extract grade like "304", "304L", "316", "316L"
+        const match = str.match(/\b(\d+[a-z]*)\b/i);
+        return match ? match[1].toLowerCase() : null;
+      };
+
+      const grade1 = extractGrade(clean1);
+      const grade2 = extractGrade(clean2);
+
+      // If both have grades, they must match exactly (304 ≠ 304L)
+      if (grade1 && grade2 && grade1 !== grade2) return false;
+
       return true;
     }
   }
@@ -1301,17 +1316,57 @@ function isSemanticallySimilarOption(opt1: string, opt2: string): boolean {
 function findCommonOptions(options1: string[], options2: string[]): string[] {
   const common: string[] = [];
   const usedIndices = new Set<number>();
-  
-  options1.forEach((opt1, i) => {
+
+  console.log(`🔍 Finding common options between:`);
+  console.log(`   Stage 1: [${options1.join(', ')}]`);
+  console.log(`   Stage 2: [${options2.join(', ')}]`);
+
+  // First, check for direct matches and semantic matches
+  options1.forEach((opt1) => {
     options2.forEach((opt2, j) => {
       if (usedIndices.has(j)) return;
       if (areOptionsStronglySimilar(opt1, opt2)) {
         common.push(opt1);
         usedIndices.add(j);
+        console.log(`   ✅ Match: "${opt1}" ≈ "${opt2}"`);
       }
     });
   });
-  
+
+  // Second, check if Stage 2 has ranges and Stage 1 has discrete values
+  options2.forEach((opt2, j) => {
+    if (usedIndices.has(j)) return;
+
+    const rangeMatch = opt2.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|inch|in)?/i);
+    if (rangeMatch) {
+      const min = parseFloat(rangeMatch[1]);
+      const max = parseFloat(rangeMatch[2]);
+      const unit = rangeMatch[3]?.toLowerCase() || '';
+
+      console.log(`   📊 Found range in Stage 2: ${opt2} (${min}-${max} ${unit})`);
+
+      // Check if any Stage 1 options fall within this range
+      options1.forEach((opt1) => {
+        const valueMatch = opt1.match(/(\d+(?:\.\d+)?)\s*(mm|cm|m|inch|in)?/i);
+        if (valueMatch && !common.includes(opt1)) {
+          const value = parseFloat(valueMatch[1]);
+          const valueUnit = valueMatch[2]?.toLowerCase() || '';
+
+          // Check if units match (if specified)
+          const unitsMatch = !unit || !valueUnit || unit === valueUnit;
+
+          if (unitsMatch && value >= min && value <= max) {
+            common.push(opt1);
+            console.log(`   ✅ Range match: "${opt1}" falls within "${opt2}"`);
+          }
+        }
+      });
+
+      usedIndices.add(j);
+    }
+  });
+
+  console.log(`   📊 Found ${common.length} common options`);
   return common;
 }
 
@@ -1457,7 +1512,11 @@ ${stage2All.map((s, i) => `${i + 1}. ${s.name}
 
 IMPORTANT INSTRUCTIONS:
 1. Find ALL specifications that exist in BOTH Stage 1 and Stage 2
-2. DO NOT assume that names like "Grade", "Quality" and "Standard" are the same. All these three specifications are different. 
+2. CRITICAL: "Grade", "Standard", "Quality" are COMPLETELY DIFFERENT specifications - DO NOT treat them as the same
+   - "Grade" refers to material grade (e.g., 304, 316, MS)
+   - "Standard" refers to compliance standards (e.g., IS 2062, ASTM, EN)
+   - "Quality" refers to quality level or class
+   - These are SEPARATE specifications and must be matched ONLY by exact or very similar names
 3. For each common specification:
    - Use the EXACT "spec_name" from Stage 1
    - Use the category from Stage 1 (Primary/Secondary)
@@ -1465,7 +1524,9 @@ IMPORTANT INSTRUCTIONS:
    - If NO common options, show empty options list
    - If one stage has options **range** (e.g., "1-5 mm") and the other stage has **discrete numbers** (e.g., "1 mm, 2 mm, 3 mm"), treat all discrete numbers that fall within the range as common options
    - You MUST return the common options in format **exactly as it appears in the Stage 1 list**
+   - For grades like "304" and "304L", these are DIFFERENT options - treat them separately
 4. EVEN IF a common spec has ZERO common options, it MUST still be listed with an empty options column
+5. Return ALL common specifications found - do NOT limit to 2 or any other number
 
 CRITICAL RANGE HANDLING FOR COMMON OPTIONS:
 1. If Stage 2 has a RANGE (e.g., "0.14-2.00 mm") and Stage 1 has SPECIFIC NUMBERS (e.g., "0.5 mm", "1.0 mm", "1.5 mm"):
@@ -1498,14 +1559,16 @@ Grade | Primary | 304, 316, 430
 Finish | Secondary |
 Type | Primary | A, B, C
 
-CRITICAL:
-1. Return ALL common specs found in both stages
+CRITICAL OUTPUT REQUIREMENTS:
+1. Return ALL common specifications found in both stages - DO NOT LIMIT TO 2 OR ANY NUMBER
 2. Each line represents ONE specification
 3. Use pipe (|) to separate columns
 4. EVEN IF a common spec has ZERO common options, it MUST still be listed with an empty options column
-5. If NO common specs found, return: {"common_specs": []}
-6. List common options separated by commas
-7. NO JSON, NO MARKDOWN, JUST PLAIN TEXT TABLE`;
+5. If NO common specs found, return empty table
+6. List common options separated by commas (use exact format from Stage 1)
+7. NO JSON, NO MARKDOWN, JUST PLAIN TEXT TABLE
+8. Include ALL specifications that match between stages, not just the first few you find
+9. For options like "304" and "304L", treat them as DIFFERENT - only mark as common if both stages have the EXACT same option`;
 
   try {
     console.log("📡 Calling Gemini API for common specs...");
@@ -1735,7 +1798,37 @@ export async function generateBuyerISQsWithGemini(
     console.log(`  ${i+1}. ${isq.name}: ${isq.options.length} options`);
   });
 
-  return buyerISQs;
+  // Remove duplicate specs with identical options
+  const uniqueBuyerISQs = removeDuplicateISQs(buyerISQs);
+  if (uniqueBuyerISQs.length < buyerISQs.length) {
+    console.log(`🧹 Removed ${buyerISQs.length - uniqueBuyerISQs.length} duplicate Buyer ISQs with same options`);
+  }
+
+  return uniqueBuyerISQs;
+}
+
+function removeDuplicateISQs(isqs: ISQ[]): ISQ[] {
+  const uniqueISQs: ISQ[] = [];
+  const seenOptionSets = new Map<string, ISQ>();
+
+  for (const isq of isqs) {
+    // Create a signature from sorted options
+    const optionsSignature = isq.options
+      .map(opt => opt.toLowerCase().trim())
+      .sort()
+      .join('|||');
+
+    // Check if we already have an ISQ with same options
+    if (!seenOptionSets.has(optionsSignature)) {
+      seenOptionSets.set(optionsSignature, isq);
+      uniqueISQs.push(isq);
+    } else {
+      const existing = seenOptionSets.get(optionsSignature)!;
+      console.log(`   Duplicate found: "${isq.name}" has same options as "${existing.name}"`);
+    }
+  }
+
+  return uniqueISQs;
 }
 
 function deduplicateOptions(options: string[]): string[] {
