@@ -1428,46 +1428,45 @@ function deduplicateCommonSpecs(
   const result: Array<{ spec_name: string; options: string[]; category: string }> = [];
 
   for (const spec of specs) {
-    const normalizedSpecName = normalizeSpecName(spec.spec_name);
-
-    // Check if we already have this spec
-    if (seenSpecs.has(normalizedSpecName)) {
-      console.log(`   Duplicate spec found: "${spec.spec_name}", merging options...`);
-      const existing = seenSpecs.get(normalizedSpecName)!;
-
-      // Merge options without duplicates
-      const mergedOptions = new Set<string>();
-      existing.options.forEach(opt => mergedOptions.add(opt.toLowerCase()));
-      spec.options.forEach(opt => {
-        const optLower = opt.toLowerCase();
-        if (!mergedOptions.has(optLower) && !isOptionDuplicate(opt, Array.from(mergedOptions))) {
-          existing.options.push(opt);
-          mergedOptions.add(optLower);
-        }
-      });
-
-      console.log(`   Merged options: ${existing.options.length} unique options`);
-    } else {
-      // Deduplicate options within this spec
-      const uniqueOptions: string[] = [];
-      const seenOptions = new Set<string>();
-
-      for (const opt of spec.options) {
-        const optLower = opt.toLowerCase();
-        if (!seenOptions.has(optLower) && !isOptionDuplicate(opt, uniqueOptions)) {
-          uniqueOptions.push(opt);
-          seenOptions.add(optLower);
-        }
+    // CRITICAL FIX: Use EXACT spec name for comparison, not normalized version
+    const specKey = spec.spec_name.toLowerCase().trim();
+    
+    // Check if we already have this spec (case-insensitive exact match)
+    if (seenSpecs.has(specKey)) {
+      console.log(`   ⚠️ Duplicate spec found: "${spec.spec_name}", checking if they should be merged...`);
+      const existing = seenSpecs.get(specKey)!;
+      
+      // IMPORTANT: Only merge if specs are TRULY the same (not just "hole")
+      // Check if they are semantically similar using our existing function
+      if (isSemanticallySimilar(existing.spec_name, spec.spec_name)) {
+        console.log(`   ✅ Merging "${spec.spec_name}" with "${existing.spec_name}" (semantically similar)`);
+        
+        // Merge options without duplicates
+        const mergedOptions = new Set<string>();
+        existing.options.forEach(opt => mergedOptions.add(opt.toLowerCase()));
+        
+        spec.options.forEach(opt => {
+          const optLower = opt.toLowerCase();
+          if (!mergedOptions.has(optLower) && !isOptionDuplicate(opt, existing.options)) {
+            existing.options.push(opt);
+            mergedOptions.add(optLower);
+          }
+        });
+        
+        console.log(`   Merged options: ${existing.options.length} unique options`);
+      } else {
+        // Different specs, keep both
+        console.log(`   ⚠️ "${spec.spec_name}" and "${existing.spec_name}" appear similar but are different specs`);
+        console.log(`   Keeping both as separate specifications`);
+        
+        seenSpecs.set(specKey + "_2", spec);
+        result.push(spec);
       }
-
-      seenSpecs.set(normalizedSpecName, {
-        spec_name: spec.spec_name,
-        options: uniqueOptions,
-        category: spec.category
-      });
-
-      result.push(seenSpecs.get(normalizedSpecName)!);
-      console.log(`   Added spec: "${spec.spec_name}" with ${uniqueOptions.length} unique options`);
+    } else {
+      // New spec, add it
+      seenSpecs.set(specKey, spec);
+      result.push(spec);
+      console.log(`   Added spec: "${spec.spec_name}" with ${spec.options.length} options`);
     }
   }
 
