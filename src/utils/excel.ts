@@ -42,14 +42,18 @@ export function generateAuditExcel(
   XLSX.writeFile(workbook, fileName);
 }
 
+// excel.ts file mein jaao aur yeh function update karo:
+
 export function generateCombinedExcel(
   mcatName: string,
   auditResults: AuditResult[],
   originalSpecs: UploadedSpec[],
-  isqs: { config: ISQ; keys: ISQ[]; buyers: ISQ[] }
+  isqs: { config: ISQ; keys: ISQ[]; buyers: ISQ[] },
+  commonSpecs: Array<{ spec_name: string; options: string[]; category: string }> // ← YEH ADD KARO
 ) {
   const workbook = XLSX.utils.book_new();
 
+  // Tab 1: Stage 1 - Audit (EXISTING - NO CHANGE)
   const auditData: unknown[] = auditResults.map((result) => {
     const spec = originalSpecs.find((s) => s.spec_name === result.specification);
     return {
@@ -67,6 +71,7 @@ export function generateCombinedExcel(
   const auditSheet = XLSX.utils.json_to_sheet(auditData);
   XLSX.utils.book_append_sheet(workbook, auditSheet, "Stage 1 - Audit");
 
+  // Tab 2: Stage 2 - ISQs (EXISTING - NO CHANGE)
   const stage2ISQs: unknown[] = [
     {
       "ISQ Type": "Config",
@@ -86,22 +91,37 @@ export function generateCombinedExcel(
   const stage2Sheet = XLSX.utils.json_to_sheet(stage2ISQs);
   XLSX.utils.book_append_sheet(workbook, stage2Sheet, "Stage 2 - ISQs");
 
+  // Tab 3: NEW - Stage 3 - Common Specifications (YEH ADD KARO)
+  if (commonSpecs && commonSpecs.length > 0) {
+    const commonSpecsData: unknown[] = commonSpecs.map((spec, idx) => ({
+      "Rank": idx + 1,
+      "Spec Name": spec.spec_name,
+      "Category": spec.category,
+      "Common Options": spec.options.join(", "),
+      "Total Options": spec.options.length,
+      "Status": spec.options.length > 0 ? "✅ Found" : "❌ No common options"
+    }));
+
+    const commonSpecsSheet = XLSX.utils.json_to_sheet(commonSpecsData);
+    XLSX.utils.book_append_sheet(workbook, commonSpecsSheet, "Stage 3 - Common Specs");
+  }
+
+  // Tab 4: Stage 3 - Buyer ISQs (EXISTING - NO CHANGE)
   const buyerISQs: unknown[] = isqs.buyers.map((b, idx) => ({
     "Rank": idx + 1,
-    "Spec Name": b.name,
+    "Buyer ISQ Name": b.name,
     "Options (Comma Separated)": b.options.join(", "),
     "Total Options": b.options.length,
   }));
 
   if (buyerISQs.length > 0) {
-    const stage3Sheet = XLSX.utils.json_to_sheet(buyerISQs);
-    XLSX.utils.book_append_sheet(workbook, stage3Sheet, "Stage 3 - Buyer ISQs");
+    const buyerISQsSheet = XLSX.utils.json_to_sheet(buyerISQs);
+    XLSX.utils.book_append_sheet(workbook, buyerISQsSheet, "Stage 3 - Buyer ISQs");
   }
 
   const fileName = `${mcatName}_Complete_${new Date().toISOString().split("T")[0]}.xlsx`;
   XLSX.writeFile(workbook, fileName);
 }
-
 export function generateExcelFile(
   stage1: Stage1Output,
   isqs: { config: ISQ; keys: ISQ[]; buyers: ISQ[] }
