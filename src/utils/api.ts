@@ -1422,56 +1422,14 @@ export async function findCommonSpecsWithGemini(
 function deduplicateCommonSpecs(
   specs: Array<{ spec_name: string; options: string[]; category: string }>
 ): Array<{ spec_name: string; options: string[]; category: string }> {
-  console.log("🧹 Deduplicating common specifications...");
-
-  const seenSpecs = new Map<string, { spec_name: string; options: string[]; category: string }>();
-  const result: Array<{ spec_name: string; options: string[]; category: string }> = [];
-
-  for (const spec of specs) {
-    // CRITICAL FIX: Use EXACT spec name for comparison, not normalized version
-    const specKey = spec.spec_name.toLowerCase().trim();
-    
-    // Check if we already have this spec (case-insensitive exact match)
-    if (seenSpecs.has(specKey)) {
-      console.log(`   ⚠️ Duplicate spec found: "${spec.spec_name}", checking if they should be merged...`);
-      const existing = seenSpecs.get(specKey)!;
-      
-      // IMPORTANT: Only merge if specs are TRULY the same (not just "hole")
-      // Check if they are semantically similar using our existing function
-      if (isSemanticallySimilar(existing.spec_name, spec.spec_name)) {
-        console.log(`   ✅ Merging "${spec.spec_name}" with "${existing.spec_name}" (semantically similar)`);
-        
-        // Merge options without duplicates
-        const mergedOptions = new Set<string>();
-        existing.options.forEach(opt => mergedOptions.add(opt.toLowerCase()));
-        
-        spec.options.forEach(opt => {
-          const optLower = opt.toLowerCase();
-          if (!mergedOptions.has(optLower) && !isOptionDuplicate(opt, existing.options)) {
-            existing.options.push(opt);
-            mergedOptions.add(optLower);
-          }
-        });
-        
-        console.log(`   Merged options: ${existing.options.length} unique options`);
-      } else {
-        // Different specs, keep both
-        console.log(`   ⚠️ "${spec.spec_name}" and "${existing.spec_name}" appear similar but are different specs`);
-        console.log(`   Keeping both as separate specifications`);
-        
-        seenSpecs.set(specKey + "_2", spec);
-        result.push(spec);
-      }
-    } else {
-      // New spec, add it
-      seenSpecs.set(specKey, spec);
-      result.push(spec);
-      console.log(`   Added spec: "${spec.spec_name}" with ${spec.options.length} options`);
-    }
-  }
-
-  console.log(`✅ Deduplication complete: ${result.length} unique specs`);
-  return result;
+  console.log("🚫 DEDUPLICATION DISABLED - Keeping all specs as they are");
+  
+  // Return specs as-is, only deduplicate options within each spec
+  return specs.map(spec => ({
+    spec_name: spec.spec_name,
+    options: Array.from(new Set(spec.options.map(o => o.trim()).filter(o => o.length > 0))),
+    category: spec.category
+  }));
 }
 
 // Helper 1: Use Gemini API FIRST
