@@ -715,7 +715,7 @@ function generateFallbackStage1(): Stage1Output {
 // ==================== CORS FIXED VERSION ====================
 
 async function fetchURL(url: string): Promise<string> {
-  console.log(🔗 Fetching URL: ${url});
+ console.log(`🔗 Fetching URL: ${url}`);
   
   // Updated proxies list with better redirect handling
   const proxies = [
