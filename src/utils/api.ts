@@ -760,7 +760,7 @@ async function fetchURL(url: string): Promise<string> {
         
         // Special handling for 307 redirect
         if (response.status === 307 || response.status === 308) {
-          console.log(  '🔀 Detected' ${response.status} 'redirect, trying to follow...');
+         console.log(`🔀 Detected ${response.status} redirect, trying to follow...`);
           // Check for location header
           const redirectUrl = response.headers.get('Location');
           if (redirectUrl) {
