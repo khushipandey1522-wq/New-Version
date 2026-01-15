@@ -714,258 +714,294 @@ function generateFallbackStage1(): Stage1Output {
 
 // ==================== CORS FIXED VERSION ====================
 
-// Replace the existing fetchURL function with this
-async function fetchURL(url: string): Promise<string> {
-  console.log(`🔗 Enhanced fetching: ${url}`);
+/sync function fetchURL(url: string): Promise<string> {
+  console.log(🔗 Fetching URL: ${url});
   
-  try {
-    // Use the enhanced scraping function
-    const result = await enhancedScraping(url);
+  // Updated proxies list with better redirect handling
+  const proxies = [
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&disableCache=true`,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    // Direct fetch with redirect handling as last resort
+    url
+  ];
+
+  for (let i = 0; i < proxies.length; i++) {
+    const proxyUrl = proxies[i];
+    const isDirect = proxyUrl === url;
     
-    // Log the scraped data
-    ScrapedDataLogger.logScrapedData(url, result.content, result.stats, result.rawHtml);
+    console.log(  🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'});
     
-    // Show download button after scraping
-    showScrapedDataDownloadButton();
-    
-    return result.content;
-    
-  } catch (error: any) {
-    console.error(`❌ Fetch error for ${url}:`, error.message);
-    return "";
-  }
-}
-async function enhancedScraping(url: string): Promise<{
-  content: string;
-  stats: {
-    totalLength: number;
-    tablesFound: number;
-    listsFound: number;
-    specKeywords: string[];
-    hasTechnicalData: boolean;
-  };
-  rawHtml?: string;
-}> {
-  console.group(`🔍 Enhanced Scraping: ${url}`);
-  
-  const stats = {
-    totalLength: 0,
-    tablesFound: 0,
-    listsFound: 0,
-    specKeywords: [] as string[],
-    hasTechnicalData: false
-  };
-  
-  try {
-    // Try multiple CORS proxies
-    const proxies = [
-      `https://corsproxy.io/?${encodeURIComponent(url)}`,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-      `https://proxy.cors.sh/${url}`,
-      url // Direct attempt last
-    ];
-    
-    let html = '';
-    let usedProxy = '';
-    
-    for (const proxyUrl of proxies) {
-      try {
-        console.log(`  🔄 Trying proxy: ${proxyUrl.includes('cors') ? 'CORS Proxy' : 'Direct'}`);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout
+      
+      // Special headers for airport.io
+      const headers: any = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,/;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+      };
+      
+      // For direct requests, add redirect handling
+      const requestOptions: RequestInit = {
+        signal: controller.signal,
+        headers: !isDirect ? headers : { ...headers, 'Cache-Control': 'no-cache' },
+        redirect: 'follow' // CRITICAL: This follows redirects automatically
+      };
+      
+      const response = await fetch(proxyUrl, requestOptions);
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn(  ⚠️ Attempt ${i + 1} failed with status: ${response.status});
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-        
-        const response = await fetch(proxyUrl, {
-          signal: controller.signal,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Referer': 'https://www.google.com/'
+        // Special handling for 307 redirect
+        if (response.status === 307 || response.status === 308) {
+          console.log(  🔀 Detected ${response.status} redirect, trying to follow...);
+          // Check for location header
+          const redirectUrl = response.headers.get('Location');
+          if (redirectUrl) {
+            console.log(  🧭 Redirecting to: ${redirectUrl});
+            // Try fetching the redirect URL
+            const redirectResponse = await fetch(redirectUrl, requestOptions);
+            if (redirectResponse.ok) {
+              return await processSuccessfulResponse(redirectResponse, proxyUrl);
+            }
           }
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          if (proxyUrl.includes('allorigins.win')) {
-            const data = await response.json();
-            html = data.contents || data || '';
-          } else {
-            html = await response.text();
-          }
-          usedProxy = proxyUrl;
-          console.log(`  ✅ Success with ${proxyUrl.includes('cors') ? 'CORS Proxy' : 'Direct'}`);
-          break;
         }
-      } catch (error: any) {
-        console.log(`  ❌ Proxy failed: ${error.message}`);
         continue;
       }
+      
+      return await processSuccessfulResponse(response, proxyUrl);
+      
+    } catch (error: any) {
+      console.warn(  ⚠️ Attempt ${i + 1} error:, error.message);
+      continue;
     }
+  }
+  
+  console.error(❌ All attempts failed for URL: ${url});
+  // Show user-friendly alert
+  alert(Could not scrape ${url}\nStatus: 307 Temporary Redirect\n\nThe website may be blocking automated access. Try:\n1. Different URLs\n2. Manual copy-paste\n3. Check website accessibility);
+  return "";
+}
+
+// Helper function to process successful responses
+async function processSuccessfulResponse(response: Response, proxyUrl: string): Promise<string> {
+  let html = '';
+  
+  if (proxyUrl.includes('allorigins.win')) {
+    const data = await response.json();
+    html = data.contents || '';
+  } else {
+    html = await response.text();
+  }
+  
+  if (!html || html.trim().length === 0) {
+    console.warn(  ⚠️ Returned empty content);
+    return "";
+  }
+  
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
+  doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
+  
+  let text = doc.body?.textContent || '';
+  
+  text = text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 2000);
+  
+  console.log(  ✅ Success! Got ${text.length} characters);
+  return text;
+}
+You, Now
+async function fetchURL(url: string): Promise<string> {
+  console.log(🔗 Enhanced scraping for: ${url});
+  
+  const proxies = [
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&callback=?`,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://proxy.cors.sh/${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    url
+  ];
+
+  for (let i = 0; i < proxies.length; i++) {
+    const proxyUrl = proxies[i];
+    const isDirect = proxyUrl === url;
     
-    if (!html) {
-      console.error(`  ❌ All scraping attempts failed`);
-      console.groupEnd();
-      return { content: '', stats };
-    }
+    console.log(  🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'});
     
-    console.log(`  📊 Raw HTML length: ${html.length} characters`);
-    
-    // Save raw HTML for debugging
-    const rawHtml = html.substring(0, 10000); // First 10K chars
-    
-    // Parse HTML
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    
-    // 1. Remove unwanted elements
-    const unwantedSelectors = [
-      'script', 'style', 'noscript', 'iframe', 'nav', 
-      'header', 'footer', 'aside', 'form', 'button',
-      'input', 'select', 'textarea', 'svg', 'img',
-      'video', 'audio', 'canvas', 'iframe', 'link',
-      'meta', '.ad', '.advertisement', '.popup',
-      '.modal', '.cookie', '.notification'
-    ].join(', ');
-    
-    doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
-    
-    // 2. Extract SPECIFIC elements likely to contain specs
-    let allSpecText = '';
-    
-    // Look for specification tables
-    const tables = doc.querySelectorAll('table');
-    stats.tablesFound = tables.length;
-    
-    tables.forEach((table, index) => {
-      const tableText = table.textContent?.trim() || '';
-      if (tableText.length > 50 && tableText.length < 5000) {
-        // Check if it looks like a spec table
-        const lowerText = tableText.toLowerCase();
-        const hasSpecTerms = 
-          lowerText.includes('spec') || 
-          lowerText.includes('grade') || 
-          lowerText.includes('size') ||
-          lowerText.includes('mm') ||
-          lowerText.includes('thickness') ||
-          lowerText.includes('material');
-        
-        if (hasSpecTerms) {
-          allSpecText += `\n\n=== TABLE ${index + 1} ===\n${tableText}\n`;
-          console.log(`  📊 Found spec table ${index + 1}: ${tableText.substring(0, 100)}...`);
-          stats.hasTechnicalData = true;
-        }
-      }
-    });
-    
-    // Look for specification lists
-    const lists = doc.querySelectorAll('ul, ol, dl');
-    stats.listsFound = lists.length;
-    
-    lists.forEach((list, index) => {
-      const items = Array.from(list.querySelectorAll('li, dt, dd'));
-      const specItems = items.filter(item => {
-        const text = item.textContent?.toLowerCase() || '';
-        return text.match(/\d+\s*(mm|cm|in|grade|astm|is)/i) ||
-               text.includes('material') ||
-               text.includes('thickness') ||
-               text.includes('standard');
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const response = await fetch(proxyUrl, {
+        signal: controller.signal,
+        headers: !isDirect ? {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache'
+        } : {}
       });
       
-      if (specItems.length > 0) {
-        const listText = specItems.map(item => item.textContent?.trim()).filter(Boolean).join('\n');
-        allSpecText += `\n\n=== LIST ${index + 1} ===\n${listText}\n`;
-        console.log(`  📋 Found spec list ${index + 1} with ${specItems.length} items`);
-        stats.hasTechnicalData = true;
-      }
-    });
-    
-    // Look for specification divs
-    const specDivs = doc.querySelectorAll([
-      '[class*="spec"]',
-      '[class*="feature"]',
-      '[class*="detail"]',
-      '[class*="attribute"]',
-      '[class*="property"]',
-      '[class*="technical"]',
-      '[id*="spec"]',
-      '[id*="feature"]',
-      '[id*="detail"]'
-    ].join(', '));
-    
-    specDivs.forEach((div, index) => {
-      const text = div.textContent?.trim() || '';
-      if (text.length > 20 && text.length < 1000) {
-        allSpecText += `\n\n=== DIV ${index + 1} ===\n${text}\n`;
-      }
-    });
-    
-    // 3. Extract ALL text as fallback
-    if (!allSpecText.trim()) {
-      console.log('  ℹ️ No structured specs found, extracting all text');
+      clearTimeout(timeoutId);
       
-      // Get text from main content areas first
-      const mainContent = doc.querySelector('main, article, .product-detail, .description, .content');
-      if (mainContent) {
-        allSpecText = mainContent.textContent?.trim() || '';
+      if (!response.ok) {
+        console.warn(  ⚠️ Attempt ${i + 1} failed with status: ${response.status});
+        continue;
+      }
+      
+      let html = '';
+      
+      if (proxyUrl.includes('allorigins.win')) {
+        const data = await response.json();
+        html = data.contents || '';
       } else {
-        allSpecText = doc.body?.textContent?.trim() || '';
+        html = await response.text();
       }
-    }
-    
-    // 4. Clean and analyze the text
-    let cleanedText = allSpecText
-      .replace(/\s+/g, ' ')
-      .replace(/\n\s*\n/g, '\n')
-      .trim();
-    
-    stats.totalLength = cleanedText.length;
-    
-    // Analyze for technical keywords
-    const technicalKeywords = [
-      'material', 'grade', 'thickness', 'size', 'diameter',
-      'width', 'length', 'standard', 'finish', 'coating',
-      'mm', 'cm', 'inch', 'astm', 'is ', 'din', 'jis',
-      '304', '316', '430', 'MS', 'SS', 'steel', 'aluminum'
-    ];
-    
-    technicalKeywords.forEach(keyword => {
-      if (cleanedText.toLowerCase().includes(keyword)) {
-        stats.specKeywords.push(keyword);
+      
+      if (!html || html.trim().length === 0) {
+        console.warn(  ⚠️ Attempt ${i + 1} returned empty content);
+        continue;
       }
-    });
-    
-    // Check if has technical data
-    stats.hasTechnicalData = stats.hasTechnicalData || 
-      cleanedText.match(/\d+\s*(mm|cm|m|inch)/i) !== null ||
-      cleanedText.match(/\b(304|316|ASTM|IS)\b/i) !== null;
-    
-    // Limit size but keep important parts
-    if (cleanedText.length > 4000) {
-      cleanedText = cleanedText.substring(0, 2000) + 
-                   '\n\n... [CONTENT TRUNCATED] ...\n\n' +
-                   cleanedText.substring(cleanedText.length - 2000);
+      
+      // ========== ENHANCED SCRAPING LOGIC ==========
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      
+      // 1. पहले specification tables ढूंढें
+      let allSpecText = '';
+      
+      // Tables with specifications
+      const tables = doc.querySelectorAll('table');
+      console.log(  📊 Found ${tables.length} tables);
+      
+      tables.forEach((table, index) => {
+        const tableText = table.textContent?.trim() || '';
+        if (tableText.length > 20 && tableText.length < 5000) {
+          const lowerText = tableText.toLowerCase();
+          
+          // Check if table contains specification keywords
+          const specKeywords = [
+            'material', 'grade', 'thickness', 'size', 'diameter',
+            'width', 'length', 'standard', 'finish', 'coating',
+            'type', 'form', 'tolerance', 'hardness', 'strength',
+            'mm', 'cm', 'inch', 'astm', 'is ', 'din', 'jis',
+            '304', '316', '430', 'ms', 'ss', 'steel', 'aluminum'
+          ];
+          
+          const hasSpecs = specKeywords.some(keyword => lowerText.includes(keyword));
+          
+          if (hasSpecs || lowerText.match(/\d+\s*(mm|cm|in)/i)) {
+            allSpecText += \n\n[TABLE ${index + 1}]\n${tableText};
+          }
+        }
+      });
+      
+      // 2. Specification lists ढूंढें
+      const lists = doc.querySelectorAll('ul, ol, dl');
+      console.log(  📋 Found ${lists.length} lists);
+      
+      lists.forEach((list, index) => {
+        const items = Array.from(list.querySelectorAll('li, dt, dd'));
+        const specItems = items.filter(item => {
+          const text = item.textContent?.toLowerCase() || '';
+          return text.match(/\d+\s*(mm|cm|in|grade|astm|is)/i) ||
+                 text.includes('material') ||
+                 text.includes('thickness') ||
+                 text.includes('standard') ||
+                 text.includes('finish');
+        });
+        
+        if (specItems.length > 0) {
+          const listText = specItems.map(item => item.textContent?.trim()).filter(Boolean).join('\n');
+          allSpecText += \n\n[LIST ${index + 1}]\n${listText};
+        }
+      });
+      
+      // 3. Specification divs ढूंढें
+      const specDivs = doc.querySelectorAll([
+        '[class*="spec"]',
+        '[class*="feature"]',
+        '[class*="detail"]',
+        '[class*="attribute"]',
+        '[class*="property"]',
+        '[class*="technical"]',
+        '[id*="spec"]',
+        '[id*="feature"]'
+      ].join(', '));
+      
+      specDivs.forEach((div, index) => {
+        const text = div.textContent?.trim() || '';
+        if (text.length > 20 && text.length < 1000) {
+          allSpecText += \n\n[DIV ${index + 1}]\n${text};
+        }
+      });
+      
+      let finalText = '';
+      if (allSpecText.trim()) {
+        finalText = allSpecText.trim();
+        console.log(  ✅ Found structured specifications);
+      } else {
+        console.log(  ℹ️ No structured specs found, extracting all text);
+        
+        // Remove unwanted elements
+        const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
+        doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
+        
+        finalText = doc.body?.textContent?.trim() || '';
+      }
+      
+      // Clean और limit करें
+      finalText = finalText
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Irrelevant content filter करें
+      const irrelevantPatterns = [
+        /copyright\s*©/gi,
+        /all\srights\sreserved/gi,
+        /privacy\s*policy/gi,
+        /terms\sof\suse/gi,
+        /contact\s*us/gi,
+        /follow\s*us/gi,
+        /subscribe/gi,
+        /newsletter/gi,
+        /cookie\s*policy/gi,
+        /shipping/gi,
+        /delivery/gi,
+        /payment/gi,
+        /warranty/gi,
+        /return\s*policy/gi
+      ];
+      
+      irrelevantPatterns.forEach(pattern => {
+        finalText = finalText.replace(pattern, '');
+      });
+      
+      // Limit to 4000 characters
+      if (finalText.length > 4000) {
+        finalText = finalText.substring(0, 4000);
+      }
+      
+      console.log(  ✅ Success! Got ${finalText.length} characters (${tables.length} tables, ${lists.length} lists));
+      return finalText;
+      
+    } catch (error: any) {
+      console.warn(  ⚠️ Attempt ${i + 1} error:, error.message);
+      continue;
     }
-    
-    console.log(`  ✅ Scraping complete: ${stats.totalLength} chars`);
-    console.log(`  📊 Stats: ${stats.tablesFound} tables, ${stats.listsFound} lists`);
-    console.log(`  🔍 Keywords found: ${stats.specKeywords.slice(0, 10).join(', ')}${stats.specKeywords.length > 10 ? '...' : ''}`);
-    console.log(`  🔧 Has technical data: ${stats.hasTechnicalData ? '✅ YES' : '❌ NO'}`);
-    console.groupEnd();
-    
-    return {
-      content: cleanedText,
-      stats,
-      rawHtml
-    };
-    
-  } catch (error: any) {
-    console.error(`  ❌ Scraping error: ${error.message}`);
-    console.groupEnd();
-    return { content: '', stats };
   }
+  
+  console.error(❌ All attempts failed for URL: ${url});
+  return "";
 }
 
 
