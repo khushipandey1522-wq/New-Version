@@ -1,7 +1,181 @@
 import type { InputData, Stage1Output, ISQ, ExcelData, AuditInput, AuditResult } from "../types";
 
-
-
+// 📁 Simple Scraped Data Logger
+class ScrapedDataLogger {
+  private static scrapedData: Array<{
+    url: string;
+    timestamp: string;
+    content: string;
+    stats: any;
+    rawHtml?: string;
+  }> = [];
+  
+  static logScrapedData(url: string, content: string, stats: any, rawHtml?: string) {
+    this.scrapedData.push({
+      url,
+      timestamp: new Date().toISOString(),
+      content,
+      stats,
+      rawHtml
+    });
+    
+    // Save to localStorage for persistence
+    this.saveToLocalStorage();
+    
+    console.log(`📝 Logged scraped data for: ${url} (${content.length} chars)`);
+  }
+  
+  static getAllScrapedData() {
+    return this.scrapedData;
+  }
+  
+  static getScrapedDataForUrl(url: string) {
+    return this.scrapedData.filter(data => data.url === url);
+  }
+  
+  static clearScrapedData() {
+    this.scrapedData = [];
+    localStorage.removeItem('scraped_data_logs');
+  }
+  
+  static saveToLocalStorage() {
+    try {
+      // Keep only last 20 entries to avoid storage issues
+      const dataToSave = this.scrapedData.slice(-20).map(data => ({
+        url: data.url,
+        timestamp: data.timestamp,
+        contentLength: data.content.length,
+        stats: data.stats,
+        contentPreview: data.content.substring(0, 500) + (data.content.length > 500 ? '...' : '')
+      }));
+      
+      localStorage.setItem('scraped_data_logs', JSON.stringify(dataToSave));
+    } catch (e) {
+      console.warn('Could not save scraped data to localStorage:', e);
+    }
+  }
+  
+  static loadFromLocalStorage() {
+    try {
+      const saved = localStorage.getItem('scraped_data_logs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log(`📁 Loaded ${parsed.length} scraped data entries from localStorage`);
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('Could not load scraped data from localStorage:', e);
+    }
+    return [];
+  }
+  
+  // Download all scraped data as JSON
+  static downloadAllScrapedData() {
+    if (this.scrapedData.length === 0) {
+      alert('No scraped data available to download');
+      return;
+    }
+    
+    const data = {
+      timestamp: new Date().toISOString(),
+      totalUrls: this.scrapedData.length,
+      data: this.scrapedData.map(item => ({
+        url: item.url,
+        timestamp: item.timestamp,
+        contentLength: item.content.length,
+        stats: item.stats,
+        content: item.content,
+        rawHtml: item.rawHtml
+      }))
+    };
+    
+    const content = JSON.stringify(data, null, 2);
+    this.downloadFile(content, 'scraped_data_full.json', 'application/json');
+  }
+  
+  // Download scraped data summary as CSV
+  static downloadSummaryCSV() {
+    if (this.scrapedData.length === 0) {
+      alert('No scraped data available');
+      return;
+    }
+    
+    const headers = ['URL', 'Timestamp', 'Content Length', 'Tables Found', 'Lists Found', 'Has Technical Data', 'Keywords'];
+    const rows = this.scrapedData.map(item => [
+      item.url,
+      item.timestamp,
+      item.content.length,
+      item.stats.tablesFound,
+      item.stats.listsFound,
+      item.stats.hasTechnicalData ? 'YES' : 'NO',
+      item.stats.specKeywords.join('; ')
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    this.downloadFile(csvContent, 'scraped_summary.csv', 'text/csv');
+  }
+  
+  // Download individual URL data
+  static downloadUrlData(url: string) {
+    const urlData = this.getScrapedDataForUrl(url);
+    if (urlData.length === 0) {
+      alert(`No data found for URL: ${url}`);
+      return;
+    }
+    
+    const data = urlData[0];
+    const content = JSON.stringify(data, null, 2);
+    const filename = `scraped_${this.sanitizeFilename(url)}_${Date.now()}.json`;
+    
+    this.downloadFile(content, filename, 'application/json');
+  }
+  
+  private static downloadFile(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  
+  private static sanitizeFilename(filename: string): string {
+    return filename
+      .replace(/[^a-z0-9]/gi, '_')
+      .substring(0, 50);
+  }
+  
+  // Show scraped data in console
+  static showInConsole() {
+    console.group('📊 SCRAPED DATA SUMMARY');
+    console.log(`Total URLs scraped: ${this.scrapedData.length}`);
+    
+    this.scrapedData.forEach((data, index) => {
+      console.group(`URL ${index + 1}: ${data.url}`);
+      console.log(`Timestamp: ${data.timestamp}`);
+      console.log(`Content length: ${data.content.length} characters`);
+      console.log(`Tables found: ${data.stats.tablesFound}`);
+      console.log(`Lists found: ${data.stats.listsFound}`);
+      console.log(`Has technical data: ${data.stats.hasTechnicalData ? '✅ YES' : '❌ NO'}`);
+      console.log(`Keywords found: ${data.stats.specKeywords.join(', ')}`);
+      
+      console.group('Content Preview (first 500 chars):');
+      console.log(data.content.substring(0, 500) + (data.content.length > 500 ? '...' : ''));
+      console.groupEnd();
+      
+      console.groupEnd();
+    });
+    
+    console.groupEnd();
+  }
+}
 
 function normalizeSpecName(name: string): string {
   let normalized = name.toLowerCase().trim();
