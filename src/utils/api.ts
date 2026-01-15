@@ -716,83 +716,27 @@ function generateFallbackStage1(): Stage1Output {
 
 // ==================== CORS FIXED VERSION ====================
 
+// Replace the existing fetchURL function with this
 async function fetchURL(url: string): Promise<string> {
-  console.log(`🔗 Fetching URL: ${url}`);
+  console.log(`🔗 Enhanced fetching: ${url}`);
   
-  const proxies = [
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&callback=?`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    `https://proxy.cors.sh/${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    url
-  ];
-
-  for (let i = 0; i < proxies.length; i++) {
-    const proxyUrl = proxies[i];
-    const isDirect = proxyUrl === url;
+  try {
+    // Use the enhanced scraping function
+    const result = await enhancedScraping(url);
     
-    console.log(`  🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'}`);
+    // Log the scraped data
+    ScrapedDataLogger.logScrapedData(url, result.content, result.stats, result.rawHtml);
     
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      const response = await fetch(proxyUrl, {
-        signal: controller.signal,
-        headers: !isDirect ? {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Cache-Control': 'no-cache'
-        } : {}
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.warn(`  ⚠️ Attempt ${i + 1} failed with status: ${response.status}`);
-        continue;
-      }
-      
-      let html = '';
-      
-      if (proxyUrl.includes('allorigins.win')) {
-        const data = await response.json();
-        html = data.contents || '';
-      } else {
-        html = await response.text();
-      }
-      
-      if (!html || html.trim().length === 0) {
-        console.warn(`  ⚠️ Attempt ${i + 1} returned empty content`);
-        continue;
-      }
-      
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
-      doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
-      
-      let text = doc.body?.textContent || '';
-      
-      text = text
-        .replace(/\s+/g, ' ')
-        .trim()
-        .substring(0, 2000);
-      
-      console.log(`  ✅ Success! Got ${text.length} characters`);
-      return text;
-      
-    } catch (error) {
-      console.warn(`  ⚠️ Attempt ${i + 1} error:`, error.message);
-      continue;
-    }
+    // Show download button after scraping
+    showScrapedDataDownloadButton();
+    
+    return result.content;
+    
+  } catch (error: any) {
+    console.error(`❌ Fetch error for ${url}:`, error.message);
+    return "";
   }
-  
-  console.error(`❌ All attempts failed for URL: ${url}`);
-  return "";
 }
-
 function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
   console.log("🔍 Parsing ISQ from text...");
 
@@ -1109,27 +1053,7 @@ async function enhancedScraping(url: string): Promise<{
     return { content: '', stats };
   }
 }
-// Replace the existing fetchURL function with this
-async function fetchURL(url: string): Promise<string> {
-  console.log(`🔗 Enhanced fetching: ${url}`);
-  
-  try {
-    // Use the enhanced scraping function
-    const result = await enhancedScraping(url);
-    
-    // Log the scraped data
-    ScrapedDataLogger.logScrapedData(url, result.content, result.stats, result.rawHtml);
-    
-    // Show download button after scraping
-    showScrapedDataDownloadButton();
-    
-    return result.content;
-    
-  } catch (error: any) {
-    console.error(`❌ Fetch error for ${url}:`, error.message);
-    return "";
-  }
-}
+
 function isRelevantSpec(specName: string): boolean {
   const irrelevantSpecs = [
     'measurement system',
