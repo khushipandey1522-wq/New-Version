@@ -756,7 +756,7 @@ async function fetchURL(url: string): Promise<string> {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.warn(  ⚠️ Attempt ${i + 1} failed with status: ${response.status});
+        console.warn(  '⚠️ Attempt ${i + 1} failed with status: ${response.status}');
         
         // Special handling for 307 redirect
         if (response.status === 307 || response.status === 308) {
