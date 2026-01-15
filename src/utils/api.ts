@@ -1,181 +1,5 @@
 import type { InputData, Stage1Output, ISQ, ExcelData, AuditInput, AuditResult } from "../types";
 
-// 📁 Simple Scraped Data Logger
-class ScrapedDataLogger {
-  private static scrapedData: Array<{
-    url: string;
-    timestamp: string;
-    content: string;
-    stats: any;
-    rawHtml?: string;
-  }> = [];
-  
-  static logScrapedData(url: string, content: string, stats: any, rawHtml?: string) {
-    this.scrapedData.push({
-      url,
-      timestamp: new Date().toISOString(),
-      content,
-      stats,
-      rawHtml
-    });
-    
-    // Save to localStorage for persistence
-    this.saveToLocalStorage();
-    
-    console.log(`📝 Logged scraped data for: ${url} (${content.length} chars)`);
-  }
-  
-  static getAllScrapedData() {
-    return this.scrapedData;
-  }
-  
-  static getScrapedDataForUrl(url: string) {
-    return this.scrapedData.filter(data => data.url === url);
-  }
-  
-  static clearScrapedData() {
-    this.scrapedData = [];
-    localStorage.removeItem('scraped_data_logs');
-  }
-  
-  static saveToLocalStorage() {
-    try {
-      // Keep only last 20 entries to avoid storage issues
-      const dataToSave = this.scrapedData.slice(-20).map(data => ({
-        url: data.url,
-        timestamp: data.timestamp,
-        contentLength: data.content.length,
-        stats: data.stats,
-        contentPreview: data.content.substring(0, 500) + (data.content.length > 500 ? '...' : '')
-      }));
-      
-      localStorage.setItem('scraped_data_logs', JSON.stringify(dataToSave));
-    } catch (e) {
-      console.warn('Could not save scraped data to localStorage:', e);
-    }
-  }
-  
-  static loadFromLocalStorage() {
-    try {
-      const saved = localStorage.getItem('scraped_data_logs');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        console.log(`📁 Loaded ${parsed.length} scraped data entries from localStorage`);
-        return parsed;
-      }
-    } catch (e) {
-      console.warn('Could not load scraped data from localStorage:', e);
-    }
-    return [];
-  }
-  
-  // Download all scraped data as JSON
-  static downloadAllScrapedData() {
-    if (this.scrapedData.length === 0) {
-      alert('No scraped data available to download');
-      return;
-    }
-    
-    const data = {
-      timestamp: new Date().toISOString(),
-      totalUrls: this.scrapedData.length,
-      data: this.scrapedData.map(item => ({
-        url: item.url,
-        timestamp: item.timestamp,
-        contentLength: item.content.length,
-        stats: item.stats,
-        content: item.content,
-        rawHtml: item.rawHtml
-      }))
-    };
-    
-    const content = JSON.stringify(data, null, 2);
-    this.downloadFile(content, 'scraped_data_full.json', 'application/json');
-  }
-  
-  // Download scraped data summary as CSV
-  static downloadSummaryCSV() {
-    if (this.scrapedData.length === 0) {
-      alert('No scraped data available');
-      return;
-    }
-    
-    const headers = ['URL', 'Timestamp', 'Content Length', 'Tables Found', 'Lists Found', 'Has Technical Data', 'Keywords'];
-    const rows = this.scrapedData.map(item => [
-      item.url,
-      item.timestamp,
-      item.content.length,
-      item.stats.tablesFound,
-      item.stats.listsFound,
-      item.stats.hasTechnicalData ? 'YES' : 'NO',
-      item.stats.specKeywords.join('; ')
-    ]);
-    
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-    
-    this.downloadFile(csvContent, 'scraped_summary.csv', 'text/csv');
-  }
-  
-  // Download individual URL data
-  static downloadUrlData(url: string) {
-    const urlData = this.getScrapedDataForUrl(url);
-    if (urlData.length === 0) {
-      alert(`No data found for URL: ${url}`);
-      return;
-    }
-    
-    const data = urlData[0];
-    const content = JSON.stringify(data, null, 2);
-    const filename = `scraped_${this.sanitizeFilename(url)}_${Date.now()}.json`;
-    
-    this.downloadFile(content, filename, 'application/json');
-  }
-  
-  private static downloadFile(content: string, filename: string, mimeType: string) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-  
-  private static sanitizeFilename(filename: string): string {
-    return filename
-      .replace(/[^a-z0-9]/gi, '_')
-      .substring(0, 50);
-  }
-  
-  // Show scraped data in console
-  static showInConsole() {
-    console.group('📊 SCRAPED DATA SUMMARY');
-    console.log(`Total URLs scraped: ${this.scrapedData.length}`);
-    
-    this.scrapedData.forEach((data, index) => {
-      console.group(`URL ${index + 1}: ${data.url}`);
-      console.log(`Timestamp: ${data.timestamp}`);
-      console.log(`Content length: ${data.content.length} characters`);
-      console.log(`Tables found: ${data.stats.tablesFound}`);
-      console.log(`Lists found: ${data.stats.listsFound}`);
-      console.log(`Has technical data: ${data.stats.hasTechnicalData ? '✅ YES' : '❌ NO'}`);
-      console.log(`Keywords found: ${data.stats.specKeywords.join(', ')}`);
-      
-      console.group('Content Preview (first 500 chars):');
-      console.log(data.content.substring(0, 500) + (data.content.length > 500 ? '...' : ''));
-      console.groupEnd();
-      
-      console.groupEnd();
-    });
-    
-    console.groupEnd();
-  }
-}
 
 function normalizeSpecName(name: string): string {
   let normalized = name.toLowerCase().trim();
@@ -890,110 +714,26 @@ function generateFallbackStage1(): Stage1Output {
 
 // ==================== CORS FIXED VERSION ====================
 
+// Replace the existing fetchURL function with this
 async function fetchURL(url: string): Promise<string> {
-  console.log(🔗 Fetching URL: ${url});
+  console.log(`🔗 Enhanced fetching: ${url}`);
   
-  // Updated proxies list with better redirect handling
-  const proxies = [
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&disableCache=true`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    // Direct fetch with redirect handling as last resort
-    url
-  ];
-
-  for (let i = 0; i < proxies.length; i++) {
-    const proxyUrl = proxies[i];
-    const isDirect = proxyUrl === url;
+  try {
+    // Use the enhanced scraping function
+    const result = await enhancedScraping(url);
     
-    console.log(  🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'});
+    // Log the scraped data
+    ScrapedDataLogger.logScrapedData(url, result.content, result.stats, result.rawHtml);
     
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout
-      
-      // Special headers for airport.io
-      const headers: any = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,/;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-      };
-      
-      // For direct requests, add redirect handling
-      const requestOptions: RequestInit = {
-        signal: controller.signal,
-        headers: !isDirect ? headers : { ...headers, 'Cache-Control': 'no-cache' },
-        redirect: 'follow' // CRITICAL: This follows redirects automatically
-      };
-      
-      const response = await fetch(proxyUrl, requestOptions);
-      
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.warn(  ⚠️ Attempt ${i + 1} failed with status: ${response.status});
-        
-        // Special handling for 307 redirect
-        if (response.status === 307 || response.status === 308) {
-          console.log(  🔀 Detected ${response.status} redirect, trying to follow...);
-          // Check for location header
-          const redirectUrl = response.headers.get('Location');
-          if (redirectUrl) {
-            console.log(  🧭 Redirecting to: ${redirectUrl});
-            // Try fetching the redirect URL
-            const redirectResponse = await fetch(redirectUrl, requestOptions);
-            if (redirectResponse.ok) {
-              return await processSuccessfulResponse(redirectResponse, proxyUrl);
-            }
-          }
-        }
-        continue;
-      }
-      
-      return await processSuccessfulResponse(response, proxyUrl);
-      
-    } catch (error: any) {
-      console.warn(  ⚠️ Attempt ${i + 1} error:, error.message);
-      continue;
-    }
-  }
-  
-  console.error(❌ All attempts failed for URL: ${url});
-  // Show user-friendly alert
-  alert(Could not scrape ${url}\nStatus: 307 Temporary Redirect\n\nThe website may be blocking automated access. Try:\n1. Different URLs\n2. Manual copy-paste\n3. Check website accessibility);
-  return "";
-}
-
-// Helper function to process successful responses
-async function processSuccessfulResponse(response: Response, proxyUrl: string): Promise<string> {
-  let html = '';
-  
-  if (proxyUrl.includes('allorigins.win')) {
-    const data = await response.json();
-    html = data.contents || '';
-  } else {
-    html = await response.text();
-  }
-  
-  if (!html || html.trim().length === 0) {
-    console.warn(  ⚠️ Returned empty content);
+    // Show download button after scraping
+    showScrapedDataDownloadButton();
+    
+    return result.content;
+    
+  } catch (error: any) {
+    console.error(`❌ Fetch error for ${url}:`, error.message);
     return "";
   }
-  
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
-  doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
-  
-  let text = doc.body?.textContent || '';
-  
-  text = text
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, 2000);
-  
-  console.log(  ✅ Success! Got ${text.length} characters);
-  return text;
 }
 async function enhancedScraping(url: string): Promise<{
   content: string;
