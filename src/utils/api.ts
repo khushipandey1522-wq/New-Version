@@ -1442,6 +1442,16 @@ CRITICAL RELEVANCE RULES:
 6. You MUST extract at least 2 relevant specifications if they exist across the URLs
 7. If URLs contain multiple variants (e.g., 304, 304L, 304H), include ALL of them as separate options
 
+REPEAT VS NON-REPEAT SELECTION LOGIC (VERY IMPORTANT):
+
+1. Prefer specifications that appear in multiple URLs.
+2. If enough relevant specs are not found (1 CONFIG + up to 3 KEY),
+   include highly relevant specs even if they appear in only one URL.
+3. Allow non-repeated specs ONLY when they are clearly relevant.
+4. Combine options of the same specification from different URLs,
+   even if exact options do not repeat.
+5. Do not copy all options from a single URL blindly.
+
 IMPORTANT RANGE HANDLING RULES:
 1. If you find overlapping ranges (e.g., "0.14-2.00 mm" and "0.25-2.00 mm"), 
    keep only the WIDER range ("0.14-2.00 mm")
