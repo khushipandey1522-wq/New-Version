@@ -1457,7 +1457,7 @@ INSTRUCTIONS:
 3. Select 1 CONFIG specification IF FOUND (highest frequency, most price-affecting)
 4. Select AT LEAST 2 KEY specifications if they exist across URLs (up to 3 maximum)
 5. Options must be the ones most repeated across URLs
-6. Maximum 8 options per CONFIG specification, 6 options per KEY specification
+6. Maximum 8 options per CONFIG specification, 8 options per KEY specification
 7. If you cannot find enough relevant specs, output what you find (don't make up specs)
 8. CRITICAL: You MUST try to extract at least 2 relevant specifications total (1 config + at least 1 key, OR 2+ keys if no config found)
 9. Analyze ALL URLs - do not stop after finding specs in just 1 or 2 URLs
