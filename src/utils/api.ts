@@ -1,5 +1,8 @@
 import type { InputData, Stage1Output, ISQ, ExcelData, AuditInput, AuditResult } from "../types";
 
+
+
+
 function normalizeSpecName(name: string): string {
   let normalized = name.toLowerCase().trim();
   normalized = normalized.replace(/[()\-_,.;]/g, ' ');
@@ -870,6 +873,240 @@ function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
   } catch (error) {
     console.error("❌ Error parsing ISQ text:", error);
     return null;
+  }
+}
+
+// 📁 Enhanced scraping function with better extraction
+async function enhancedScraping(url: string): Promise<{
+  content: string;
+  stats: {
+    totalLength: number;
+    tablesFound: number;
+    listsFound: number;
+    specKeywords: string[];
+    hasTechnicalData: boolean;
+  };
+  rawHtml?: string;
+}> {
+  console.group(`🔍 Enhanced Scraping: ${url}`);
+  
+  const stats = {
+    totalLength: 0,
+    tablesFound: 0,
+    listsFound: 0,
+    specKeywords: [] as string[],
+    hasTechnicalData: false
+  };
+  
+  try {
+    // Try multiple CORS proxies
+    const proxies = [
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      `https://proxy.cors.sh/${url}`,
+      url // Direct attempt last
+    ];
+    
+    let html = '';
+    let usedProxy = '';
+    
+    for (const proxyUrl of proxies) {
+      try {
+        console.log(`  🔄 Trying proxy: ${proxyUrl.includes('cors') ? 'CORS Proxy' : 'Direct'}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        
+        const response = await fetch(proxyUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Referer': 'https://www.google.com/'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          if (proxyUrl.includes('allorigins.win')) {
+            const data = await response.json();
+            html = data.contents || data || '';
+          } else {
+            html = await response.text();
+          }
+          usedProxy = proxyUrl;
+          console.log(`  ✅ Success with ${proxyUrl.includes('cors') ? 'CORS Proxy' : 'Direct'}`);
+          break;
+        }
+      } catch (error: any) {
+        console.log(`  ❌ Proxy failed: ${error.message}`);
+        continue;
+      }
+    }
+    
+    if (!html) {
+      console.error(`  ❌ All scraping attempts failed`);
+      console.groupEnd();
+      return { content: '', stats };
+    }
+    
+    console.log(`  📊 Raw HTML length: ${html.length} characters`);
+    
+    // Save raw HTML for debugging
+    const rawHtml = html.substring(0, 10000); // First 10K chars
+    
+    // Parse HTML
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    
+    // 1. Remove unwanted elements
+    const unwantedSelectors = [
+      'script', 'style', 'noscript', 'iframe', 'nav', 
+      'header', 'footer', 'aside', 'form', 'button',
+      'input', 'select', 'textarea', 'svg', 'img',
+      'video', 'audio', 'canvas', 'iframe', 'link',
+      'meta', '.ad', '.advertisement', '.popup',
+      '.modal', '.cookie', '.notification'
+    ].join(', ');
+    
+    doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
+    
+    // 2. Extract SPECIFIC elements likely to contain specs
+    let allSpecText = '';
+    
+    // Look for specification tables
+    const tables = doc.querySelectorAll('table');
+    stats.tablesFound = tables.length;
+    
+    tables.forEach((table, index) => {
+      const tableText = table.textContent?.trim() || '';
+      if (tableText.length > 50 && tableText.length < 5000) {
+        // Check if it looks like a spec table
+        const lowerText = tableText.toLowerCase();
+        const hasSpecTerms = 
+          lowerText.includes('spec') || 
+          lowerText.includes('grade') || 
+          lowerText.includes('size') ||
+          lowerText.includes('mm') ||
+          lowerText.includes('thickness') ||
+          lowerText.includes('material');
+        
+        if (hasSpecTerms) {
+          allSpecText += `\n\n=== TABLE ${index + 1} ===\n${tableText}\n`;
+          console.log(`  📊 Found spec table ${index + 1}: ${tableText.substring(0, 100)}...`);
+          stats.hasTechnicalData = true;
+        }
+      }
+    });
+    
+    // Look for specification lists
+    const lists = doc.querySelectorAll('ul, ol, dl');
+    stats.listsFound = lists.length;
+    
+    lists.forEach((list, index) => {
+      const items = Array.from(list.querySelectorAll('li, dt, dd'));
+      const specItems = items.filter(item => {
+        const text = item.textContent?.toLowerCase() || '';
+        return text.match(/\d+\s*(mm|cm|in|grade|astm|is)/i) ||
+               text.includes('material') ||
+               text.includes('thickness') ||
+               text.includes('standard');
+      });
+      
+      if (specItems.length > 0) {
+        const listText = specItems.map(item => item.textContent?.trim()).filter(Boolean).join('\n');
+        allSpecText += `\n\n=== LIST ${index + 1} ===\n${listText}\n`;
+        console.log(`  📋 Found spec list ${index + 1} with ${specItems.length} items`);
+        stats.hasTechnicalData = true;
+      }
+    });
+    
+    // Look for specification divs
+    const specDivs = doc.querySelectorAll([
+      '[class*="spec"]',
+      '[class*="feature"]',
+      '[class*="detail"]',
+      '[class*="attribute"]',
+      '[class*="property"]',
+      '[class*="technical"]',
+      '[id*="spec"]',
+      '[id*="feature"]',
+      '[id*="detail"]'
+    ].join(', '));
+    
+    specDivs.forEach((div, index) => {
+      const text = div.textContent?.trim() || '';
+      if (text.length > 20 && text.length < 1000) {
+        allSpecText += `\n\n=== DIV ${index + 1} ===\n${text}\n`;
+      }
+    });
+    
+    // 3. Extract ALL text as fallback
+    if (!allSpecText.trim()) {
+      console.log('  ℹ️ No structured specs found, extracting all text');
+      
+      // Get text from main content areas first
+      const mainContent = doc.querySelector('main, article, .product-detail, .description, .content');
+      if (mainContent) {
+        allSpecText = mainContent.textContent?.trim() || '';
+      } else {
+        allSpecText = doc.body?.textContent?.trim() || '';
+      }
+    }
+    
+    // 4. Clean and analyze the text
+    let cleanedText = allSpecText
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+    
+    stats.totalLength = cleanedText.length;
+    
+    // Analyze for technical keywords
+    const technicalKeywords = [
+      'material', 'grade', 'thickness', 'size', 'diameter',
+      'width', 'length', 'standard', 'finish', 'coating',
+      'mm', 'cm', 'inch', 'astm', 'is ', 'din', 'jis',
+      '304', '316', '430', 'MS', 'SS', 'steel', 'aluminum'
+    ];
+    
+    technicalKeywords.forEach(keyword => {
+      if (cleanedText.toLowerCase().includes(keyword)) {
+        stats.specKeywords.push(keyword);
+      }
+    });
+    
+    // Check if has technical data
+    stats.hasTechnicalData = stats.hasTechnicalData || 
+      cleanedText.match(/\d+\s*(mm|cm|m|inch)/i) !== null ||
+      cleanedText.match(/\b(304|316|ASTM|IS)\b/i) !== null;
+    
+    // Limit size but keep important parts
+    if (cleanedText.length > 4000) {
+      cleanedText = cleanedText.substring(0, 2000) + 
+                   '\n\n... [CONTENT TRUNCATED] ...\n\n' +
+                   cleanedText.substring(cleanedText.length - 2000);
+    }
+    
+    console.log(`  ✅ Scraping complete: ${stats.totalLength} chars`);
+    console.log(`  📊 Stats: ${stats.tablesFound} tables, ${stats.listsFound} lists`);
+    console.log(`  🔍 Keywords found: ${stats.specKeywords.slice(0, 10).join(', ')}${stats.specKeywords.length > 10 ? '...' : ''}`);
+    console.log(`  🔧 Has technical data: ${stats.hasTechnicalData ? '✅ YES' : '❌ NO'}`);
+    console.groupEnd();
+    
+    return {
+      content: cleanedText,
+      stats,
+      rawHtml
+    };
+    
+  } catch (error: any) {
+    console.error(`  ❌ Scraping error: ${error.message}`);
+    console.groupEnd();
+    return { content: '', stats };
   }
 }
 
