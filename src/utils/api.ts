@@ -737,90 +737,6 @@ async function fetchURL(url: string): Promise<string> {
     return "";
   }
 }
-function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
-  console.log("🔍 Parsing ISQ from text...");
-
-  try {
-    const result: { config: ISQ; keys: ISQ[] } = {
-      config: { name: "", options: [] },
-      keys: []
-    };
-
-    const configMatch = text.match(/===\s*CONFIG SPECIFICATION\s*===\s*\n\s*Name:\s*(.+?)\s*\n\s*Options:\s*(.+?)(?=\n===|\n\n|$)/is);
-
-    if (configMatch) {
-      const configName = configMatch[1].trim();
-      const configOptionsStr = configMatch[2].trim();
-
-      if (isRelevantSpec(configName)) {
-        const configOptions = configOptionsStr
-          .split(/\s*\|\s*/)
-          .map(opt => opt.trim())
-          .filter(opt => opt.length > 0 && isRelevantOption(opt))
-          .slice(0, 8);
-
-        if (configOptions.length > 0) {
-          result.config = {
-            name: configName,
-            options: configOptions
-          };
-          console.log(`✅ Config parsed: ${configName} with ${configOptions.length} options`);
-        }
-      } else {
-        console.warn(`⚠️ Config spec "${configName}" is not relevant, skipping`);
-      }
-    }
-
-    for (let i = 1; i <= 3; i++) {
-      const keyPattern = new RegExp(`===\\s*KEY SPECIFICATION ${i}\\s*===\\s*\\n\\s*Name:\\s*(.+?)\\s*\\n\\s*Options:\\s*(.+?)(?=\\n===|\\n\\n|$)`, 'is');
-      const keyMatch = text.match(keyPattern);
-
-      if (keyMatch) {
-        const keyName = keyMatch[1].trim();
-        const keyOptionsStr = keyMatch[2].trim();
-
-        if (isRelevantSpec(keyName)) {
-          const keyOptions = keyOptionsStr
-            .split(/\s*\|\s*/)
-            .map(opt => opt.trim())
-            .filter(opt => opt.length > 0 && isRelevantOption(opt))
-            .slice(0, 6);
-
-          if (keyName && keyOptions.length > 0) {
-            result.keys.push({
-              name: keyName,
-              options: keyOptions
-            });
-            console.log(`✅ Key ${i} parsed: ${keyName} with ${keyOptions.length} options`);
-          }
-        } else {
-          console.warn(`⚠️ Key spec "${keyName}" is not relevant, skipping`);
-        }
-      }
-    }
-
-    if (result.keys.length < 3) {
-      console.log(`ℹ️ Found ${result.keys.length} key specifications (expected up to 3)`);
-    }
-
-    if (result.config.name && result.config.options.length > 0) {
-      console.log(`✅ Parsed: 1 config + ${result.keys.length} keys`);
-      return result;
-    } else if (result.keys.length > 0) {
-      console.log(`✅ Parsed: 0 config + ${result.keys.length} keys`);
-      return result;
-    } else {
-      console.warn(`⚠️ No valid specs found`);
-      return null;
-    }
-
-  } catch (error) {
-    console.error("❌ Error parsing ISQ text:", error);
-    return null;
-  }
-}
-
-// 📁 Enhanced scraping function with better extraction
 async function enhancedScraping(url: string): Promise<{
   content: string;
   stats: {
@@ -1053,6 +969,91 @@ async function enhancedScraping(url: string): Promise<{
     return { content: '', stats };
   }
 }
+
+
+function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
+  console.log("🔍 Parsing ISQ from text...");
+
+  try {
+    const result: { config: ISQ; keys: ISQ[] } = {
+      config: { name: "", options: [] },
+      keys: []
+    };
+
+    const configMatch = text.match(/===\s*CONFIG SPECIFICATION\s*===\s*\n\s*Name:\s*(.+?)\s*\n\s*Options:\s*(.+?)(?=\n===|\n\n|$)/is);
+
+    if (configMatch) {
+      const configName = configMatch[1].trim();
+      const configOptionsStr = configMatch[2].trim();
+
+      if (isRelevantSpec(configName)) {
+        const configOptions = configOptionsStr
+          .split(/\s*\|\s*/)
+          .map(opt => opt.trim())
+          .filter(opt => opt.length > 0 && isRelevantOption(opt))
+          .slice(0, 8);
+
+        if (configOptions.length > 0) {
+          result.config = {
+            name: configName,
+            options: configOptions
+          };
+          console.log(`✅ Config parsed: ${configName} with ${configOptions.length} options`);
+        }
+      } else {
+        console.warn(`⚠️ Config spec "${configName}" is not relevant, skipping`);
+      }
+    }
+
+    for (let i = 1; i <= 3; i++) {
+      const keyPattern = new RegExp(`===\\s*KEY SPECIFICATION ${i}\\s*===\\s*\\n\\s*Name:\\s*(.+?)\\s*\\n\\s*Options:\\s*(.+?)(?=\\n===|\\n\\n|$)`, 'is');
+      const keyMatch = text.match(keyPattern);
+
+      if (keyMatch) {
+        const keyName = keyMatch[1].trim();
+        const keyOptionsStr = keyMatch[2].trim();
+
+        if (isRelevantSpec(keyName)) {
+          const keyOptions = keyOptionsStr
+            .split(/\s*\|\s*/)
+            .map(opt => opt.trim())
+            .filter(opt => opt.length > 0 && isRelevantOption(opt))
+            .slice(0, 6);
+
+          if (keyName && keyOptions.length > 0) {
+            result.keys.push({
+              name: keyName,
+              options: keyOptions
+            });
+            console.log(`✅ Key ${i} parsed: ${keyName} with ${keyOptions.length} options`);
+          }
+        } else {
+          console.warn(`⚠️ Key spec "${keyName}" is not relevant, skipping`);
+        }
+      }
+    }
+
+    if (result.keys.length < 3) {
+      console.log(`ℹ️ Found ${result.keys.length} key specifications (expected up to 3)`);
+    }
+
+    if (result.config.name && result.config.options.length > 0) {
+      console.log(`✅ Parsed: 1 config + ${result.keys.length} keys`);
+      return result;
+    } else if (result.keys.length > 0) {
+      console.log(`✅ Parsed: 0 config + ${result.keys.length} keys`);
+      return result;
+    } else {
+      console.warn(`⚠️ No valid specs found`);
+      return null;
+    }
+
+  } catch (error) {
+    console.error("❌ Error parsing ISQ text:", error);
+    return null;
+  }
+}
+
 
 function isRelevantSpec(specName: string): boolean {
   const irrelevantSpecs = [
