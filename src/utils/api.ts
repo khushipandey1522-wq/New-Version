@@ -1,6 +1,5 @@
 import type { InputData, Stage1Output, ISQ, ExcelData, AuditInput, AuditResult } from "../types";
 
-
 function normalizeSpecName(name: string): string {
   let normalized = name.toLowerCase().trim();
   normalized = normalized.replace(/[()\-_,.;]/g, ' ');
@@ -715,7 +714,7 @@ function generateFallbackStage1(): Stage1Output {
 // ==================== CORS FIXED VERSION ====================
 
 async function fetchURL(url: string): Promise<string> {
-  console.log(`🔗 Enhanced scraping for: ${url}`);
+  console.log(`🔗 Fetching URL: ${url}`);
   
   const proxies = [
     `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&callback=?`,
@@ -729,17 +728,17 @@ async function fetchURL(url: string): Promise<string> {
     const proxyUrl = proxies[i];
     const isDirect = proxyUrl === url;
     
-    console.log(`🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'}`);
+    console.log(`  🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'}`);
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(proxyUrl, {
         signal: controller.signal,
         headers: !isDirect ? {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,/;q=0.8',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
           'Accept-Encoding': 'gzip, deflate, br',
           'Cache-Control': 'no-cache'
@@ -749,7 +748,7 @@ async function fetchURL(url: string): Promise<string> {
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        console.warn(`⚠️ Attempt ${i + 1} failed with status: ${response.status}`);
+        console.warn(`  ⚠️ Attempt ${i + 1} failed with status: ${response.status}`);
         continue;
       }
       
@@ -763,133 +762,26 @@ async function fetchURL(url: string): Promise<string> {
       }
       
       if (!html || html.trim().length === 0) {
-        console.warn(`⚠️ Attempt ${i + 1} returned empty content`);
+        console.warn(`  ⚠️ Attempt ${i + 1} returned empty content`);
         continue;
       }
       
-      // ========== ENHANCED SCRAPING LOGIC ==========
       const doc = new DOMParser().parseFromString(html, "text/html");
+      const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
+      doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
       
-      // 1. पहले specification tables ढूंढें
-      let allSpecText = '';
+      let text = doc.body?.textContent || '';
       
-      // Tables with specifications
-      const tables = doc.querySelectorAll('table');
-      console.log(`📊 Found ${tables.length} tables`);
-      
-      tables.forEach((table, index) => {
-        const tableText = table.textContent?.trim() || '';
-        if (tableText.length > 20 && tableText.length < 5000) {
-          const lowerText = tableText.toLowerCase();
-          
-          // Check if table contains specification keywords
-          const specKeywords = [
-            'material', 'grade', 'thickness', 'size', 'diameter',
-            'width', 'length', 'standard', 'finish', 'coating',
-            'type', 'form', 'tolerance', 'hardness', 'strength',
-            'mm', 'cm', 'inch', 'astm', 'is ', 'din', 'jis',
-            '304', '316', '430', 'ms', 'ss', 'steel', 'aluminum'
-          ];
-          
-          const hasSpecs = specKeywords.some(keyword => lowerText.includes(keyword));
-          
-          if (hasSpecs || lowerText.match(/\d+\s*(mm|cm|in)/i)) {
-            allSpecText += `\n\n[TABLE ${index + 1}]\n${tableText}`;
-          }
-        }
-      });
-      
-      // 2. Specification lists ढूंढें
-      const lists = doc.querySelectorAll('ul, ol, dl');
-      console.log(`📋 Found ${lists.length} lists`);
-      
-      lists.forEach((list, index) => {
-        const items = Array.from(list.querySelectorAll('li, dt, dd'));
-        const specItems = items.filter(item => {
-          const text = item.textContent?.toLowerCase() || '';
-          return text.match(/\d+\s*(mm|cm|in|grade|astm|is)/i) ||
-                 text.includes('material') ||
-                 text.includes('thickness') ||
-                 text.includes('standard') ||
-                 text.includes('finish');
-        });
-        
-        if (specItems.length > 0) {
-          const listText = specItems.map(item => item.textContent?.trim()).filter(Boolean).join('\n');
-          allSpecText += `\n\n[LIST ${index + 1}]\n${listText}`;
-        }
-      });
-      
-      // 3. Specification divs ढूंढें
-      const specDivs = doc.querySelectorAll([
-        '[class*="spec"]',
-        '[class*="feature"]',
-        '[class*="detail"]',
-        '[class*="attribute"]',
-        '[class*="property"]',
-        '[class*="technical"]',
-        '[id*="spec"]',
-        '[id*="feature"]'
-      ].join(', '));
-      
-      specDivs.forEach((div, index) => {
-        const text = div.textContent?.trim() || '';
-        if (text.length > 20 && text.length < 1000) {
-          allSpecText += `\n\n[DIV ${index + 1}]\n${text}`;
-        }
-      });
-      
-      let finalText = '';
-      if (allSpecText.trim()) {
-        finalText = allSpecText.trim();
-        console.log(`✅ Found structured specifications`);
-      } else {
-        console.log(`ℹ️ No structured specs found, extracting all text`);
-        
-        // Remove unwanted elements
-        const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
-        doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
-        
-        finalText = doc.body?.textContent?.trim() || '';
-      }
-      
-      // Clean और limit करें
-      finalText = finalText
+      text = text
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim()
+        .substring(0, 2000);
       
-      // Irrelevant content filter करें
-      const irrelevantPatterns = [
-        /copyright\s*©/gi,
-        /all\srights\sreserved/gi,
-        /privacy\s*policy/gi,
-        /terms\sof\suse/gi,
-        /contact\s*us/gi,
-        /follow\s*us/gi,
-        /subscribe/gi,
-        /newsletter/gi,
-        /cookie\s*policy/gi,
-        /shipping/gi,
-        /delivery/gi,
-        /payment/gi,
-        /warranty/gi,
-        /return\s*policy/gi
-      ];
+      console.log(`  ✅ Success! Got ${text.length} characters`);
+      return text;
       
-      irrelevantPatterns.forEach(pattern => {
-        finalText = finalText.replace(pattern, '');
-      });
-      
-      // Limit to 4000 characters
-      if (finalText.length > 4000) {
-        finalText = finalText.substring(0, 4000);
-      }
-      
-      console.log(`✅ Success! Got ${finalText.length} characters (${tables.length} tables, ${lists.length} lists)`);
-      return finalText;
-      
-    } catch (error: any) {
-      console.warn(`⚠️ Attempt ${i + 1} error: ${error.message}`);
+    } catch (error) {
+      console.warn(`  ⚠️ Attempt ${i + 1} error:`, error.message);
       continue;
     }
   }
@@ -981,7 +873,6 @@ function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
   }
 }
 
-
 function isRelevantSpec(specName: string): boolean {
   const irrelevantSpecs = [
     'measurement system',
@@ -1036,17 +927,10 @@ export async function extractISQWithGemini(
   await sleep(2000);
 
   try {
-    console.log("🌐 Enhanced scraping with data logging...");
-    
-    // Load any previously saved data
-    const savedData = ScrapedDataLogger.loadFromLocalStorage();
-    if (savedData.length > 0) {
-      console.log(`📁 Found ${savedData.length} previously scraped entries`);
-    }
-    
+    console.log("🌐 Fetching URL contents...");
     const urlContentsPromises = urls.map(async (url, index) => {
-      console.log(`  📡 [${index + 1}/${urls.length}] Enhanced scraping: ${url}`);
-      const content = await fetchURL(url); // This now uses enhanced scraping
+      console.log(`  📡 [${index + 1}/${urls.length}] Fetching: ${url}`);
+      const content = await fetchURL(url);
       return { url, content, index };
     });
 
@@ -1063,22 +947,9 @@ export async function extractISQWithGemini(
     });
 
     console.log(`📊 Fetch results: ${successfulFetches.length}/${urls.length} successful`);
-    
-    // Show detailed stats
-    const allScrapedData = ScrapedDataLogger.getAllScrapedData();
-    console.group('📈 Scraping Statistics:');
-    allScrapedData.forEach((data, idx) => {
-      console.log(`${idx + 1}. ${data.url}`);
-      console.log(`   Content: ${data.content.length} chars`);
-      console.log(`   Tables: ${data.stats.tablesFound}, Lists: ${data.stats.listsFound}`);
-      console.log(`   Has tech data: ${data.stats.hasTechnicalData ? '✅' : '❌'}`);
-      console.log(`   Keywords: ${data.stats.specKeywords.slice(0, 5).join(', ')}`);
-    });
-    console.groupEnd();
 
     if (successfulFetches.length === 0) {
-      console.warn("⚠️ No content fetched from any URL");
-      alert("❌ No content could be scraped from the URLs. Check console for details.");
+      console.warn("⚠️ No content fetched");
       return {
         config: { name: "", options: [] },
         keys: [],
@@ -1129,7 +1000,6 @@ export async function extractISQWithGemini(
 
     if (!parsed || !parsed.config || !parsed.config.name || parsed.config.options.length === 0) {
       console.warn("⚠️ No valid data extracted from Gemini");
-      alert("⚠️ Could not extract specifications from the scraped data. Check the downloaded scraped data to see what was collected.");
       return {
         config: { name: "", options: [] },
         keys: [],
@@ -1140,9 +1010,6 @@ export async function extractISQWithGemini(
     console.log(`🎉 Success! Config: ${parsed.config.name} with ${parsed.config.options.length} options`);
     console.log(`🔑 Keys: ${parsed.keys?.length || 0}`);
 
-    // Final notification
-    alert(`✅ Stage 2 complete!\n\nScraped data from ${successfulFetches.length} URLs.\nDownload button available at bottom-right.`);
-
     return {
       config: parsed.config,
       keys: parsed.keys || [],
@@ -1151,7 +1018,6 @@ export async function extractISQWithGemini(
 
   } catch (error) {
     console.error("❌ Stage 2 API error:", error);
-    alert("❌ Error during Stage 2. Check console for details.");
     return {
       config: { name: "", options: [] },
       keys: [],
@@ -1193,17 +1059,6 @@ CRITICAL RELEVANCE RULES:
 4. DO NOT include "Other" or "etc." or "N/A" options
 5. ONLY include specs that appear multiple times across URLs
 6. You MUST extract at least 2 relevant specifications if they exist across the URLs
-7. If URLs contain multiple variants (e.g., 304, 304L, 304H), include ALL of them as separate options
-
-REPEAT VS NON-REPEAT SELECTION LOGIC (VERY IMPORTANT):
-
-1. Prefer specifications that appear in multiple URLs.
-2. If enough relevant specs are not found (1 CONFIG + up to 3 KEY),
-   include highly relevant specs even if they appear in only one URL.
-3. Allow non-repeated specs ONLY when they are clearly relevant.
-4. Combine options of the same specification from different URLs,
-   even if exact options do not repeat.
-5. Do not copy all options from a single URL blindly.
 
 IMPORTANT RANGE HANDLING RULES:
 1. If you find overlapping ranges (e.g., "0.14-2.00 mm" and "0.25-2.00 mm"), 
@@ -1220,7 +1075,7 @@ INSTRUCTIONS:
 3. Select 1 CONFIG specification IF FOUND (highest frequency, most price-affecting)
 4. Select AT LEAST 2 KEY specifications if they exist across URLs (up to 3 maximum)
 5. Options must be the ones most repeated across URLs
-6. Maximum 8 options per CONFIG specification, 8 options per KEY specification
+6. Maximum 8 options per CONFIG specification, 6 options per KEY specification
 7. If you cannot find enough relevant specs, output what you find (don't make up specs)
 8. CRITICAL: You MUST try to extract at least 2 relevant specifications total (1 config + at least 1 key, OR 2+ keys if no config found)
 9. Analyze ALL URLs - do not stop after finding specs in just 1 or 2 URLs
@@ -1567,14 +1422,57 @@ export async function findCommonSpecsWithGemini(
 function deduplicateCommonSpecs(
   specs: Array<{ spec_name: string; options: string[]; category: string }>
 ): Array<{ spec_name: string; options: string[]; category: string }> {
-  console.log("🚫 DEDUPLICATION DISABLED - Keeping all specs as they are");
-  
-  // Return specs as-is, only deduplicate options within each spec
-  return specs.map(spec => ({
-    spec_name: spec.spec_name,
-    options: Array.from(new Set(spec.options.map(o => o.trim()).filter(o => o.length > 0))),
-    category: spec.category
-  }));
+  console.log("🧹 Deduplicating common specifications...");
+
+  const seenSpecs = new Map<string, { spec_name: string; options: string[]; category: string }>();
+  const result: Array<{ spec_name: string; options: string[]; category: string }> = [];
+
+  for (const spec of specs) {
+    const normalizedSpecName = normalizeSpecName(spec.spec_name);
+
+    // Check if we already have this spec
+    if (seenSpecs.has(normalizedSpecName)) {
+      console.log(`   Duplicate spec found: "${spec.spec_name}", merging options...`);
+      const existing = seenSpecs.get(normalizedSpecName)!;
+
+      // Merge options without duplicates
+      const mergedOptions = new Set<string>();
+      existing.options.forEach(opt => mergedOptions.add(opt.toLowerCase()));
+      spec.options.forEach(opt => {
+        const optLower = opt.toLowerCase();
+        if (!mergedOptions.has(optLower) && !isOptionDuplicate(opt, Array.from(mergedOptions))) {
+          existing.options.push(opt);
+          mergedOptions.add(optLower);
+        }
+      });
+
+      console.log(`   Merged options: ${existing.options.length} unique options`);
+    } else {
+      // Deduplicate options within this spec
+      const uniqueOptions: string[] = [];
+      const seenOptions = new Set<string>();
+
+      for (const opt of spec.options) {
+        const optLower = opt.toLowerCase();
+        if (!seenOptions.has(optLower) && !isOptionDuplicate(opt, uniqueOptions)) {
+          uniqueOptions.push(opt);
+          seenOptions.add(optLower);
+        }
+      }
+
+      seenSpecs.set(normalizedSpecName, {
+        spec_name: spec.spec_name,
+        options: uniqueOptions,
+        category: spec.category
+      });
+
+      result.push(seenSpecs.get(normalizedSpecName)!);
+      console.log(`   Added spec: "${spec.spec_name}" with ${uniqueOptions.length} unique options`);
+    }
+  }
+
+  console.log(`✅ Deduplication complete: ${result.length} unique specs`);
+  return result;
 }
 
 // Helper 1: Use Gemini API FIRST
@@ -1618,7 +1516,7 @@ IMPORTANT INSTRUCTIONS:
    - "Grade" refers to material grade (e.g., 304, 316, MS)
    - "Standard" refers to compliance standards (e.g., IS 2062, ASTM, EN)
    - "Quality" refers to quality level or class
-   - These are SEPARATE specifications and must be matched ONLY by exact or very similar names  
+   - These are SEPARATE specifications and must be matched ONLY by exact or very similar names
 3. Do not match one specification from one stage to multiple specifications from other stage, one specification should match with one specification only
 4. For each common specification:
    - Use the EXACT "spec_name" from Stage 1
