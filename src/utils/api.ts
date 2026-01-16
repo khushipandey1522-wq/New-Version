@@ -2075,13 +2075,24 @@ export async function generateBuyerISQsWithGemini(
   for (const commonSpec of topSpecs) {
     console.log(`\n🔧 Processing Buyer ISQ: ${commonSpec.spec_name}`);
     
-    // Gemini से आए options लो
-    let optionsFromGemini = commonSpec.options
-      .filter(opt => !opt.toLowerCase().includes('no common options available'));
+    // Step 1: Gemini से options लो और "Other", "Others" हटाओ
+    let optionsFromGemini = commonSpec.options.filter(opt => {
+      const optLower = opt.toLowerCase().trim();
+      // "Other" और "Others" हटाओ
+      if (optLower === 'other' || optLower === 'others') {
+        console.log(`   🗑️ Removing "Other/Others" option: "${opt}"`);
+        return false;
+      }
+      // "No common options" भी हटाओ
+      if (optLower.includes('no common options available')) {
+        return false;
+      }
+      return true;
+    });
     
-    console.log(`   Options from Gemini: ${optionsFromGemini.length}`);
+    console.log(`   Options from Gemini (after removing Other/Others): ${optionsFromGemini.length}`);
     
-    // अगर 8 से कम options हैं, तो Stage 1 से और लो
+    // Step 2: अगर 8 से कम options हैं, तो Stage 1 से और लो
     if (optionsFromGemini.length < 8) {
       console.log(`   Need ${8 - optionsFromGemini.length} more options`);
       
@@ -2091,8 +2102,15 @@ export async function generateBuyerISQsWithGemini(
       );
       
       if (stage1Spec) {
-        // Stage 1 से unique options add करो
+        // Stage 1 से unique options add करो (Other/Others नहीं)
         const additionalOptions = stage1Spec.options.filter(opt => {
+          const optLower = opt.toLowerCase().trim();
+          
+          // Other/Others न लो
+          if (optLower === 'other' || optLower === 'others') {
+            return false;
+          }
+          
           // Check if option already exists in Gemini options
           const exists = optionsFromGemini.some(geminiOpt => 
             areOptionsStronglySimilar(geminiOpt, opt)
@@ -2106,8 +2124,10 @@ export async function generateBuyerISQsWithGemini(
       }
     }
     
+    // Step 3: 8 options तक limit करो
     const finalOptions = optionsFromGemini.slice(0, 8);
     console.log(`   ✅ Final: ${finalOptions.length} options`);
+    console.log(`   Final options:`, finalOptions);
     
     buyerISQs.push({
       name: commonSpec.spec_name,
