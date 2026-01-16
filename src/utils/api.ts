@@ -2060,23 +2060,66 @@ export async function generateBuyerISQsWithGemini(
   commonSpecs: Array<{ spec_name: string; options: string[]; category: string }>,
   stage1Specs: { spec_name: string; options: string[]; tier?: string }[]
 ): Promise<ISQ[]> {
-  console.log('🚀 Stage 3: Generating Buyer ISQs DIRECT from Gemini...');
+  console.log('🚀 Stage 3: Generating Buyer ISQs with Gemini...');
 
   if (commonSpecs.length === 0) {
     console.log('⚠️ No common specs, no buyer ISQs');
     return [];
   }
 
-  // Take first 2 specs from Gemini's common specs
-  const buyerISQs = commonSpecs.slice(0, 2).map(spec => ({
-    name: spec.spec_name,
-    options: spec.options
-      .filter(opt => !opt.toLowerCase().includes('no common options available'))
-      .slice(0, 8) // Just limit to 8 options
-  }));
+  const topSpecs = commonSpecs.slice(0, 2);
+  console.log(`📦 Taking first ${topSpecs.length} common specs for Buyer ISQs`);
 
-  console.log(`🎉 Generated ${buyerISQs.length} Buyer ISQs DIRECTLY from Gemini`);
-  console.log('Buyer ISQs:', buyerISQs);
+  const buyerISQs: ISQ[] = [];
+
+  for (const commonSpec of topSpecs) {
+    console.log(`\n🔧 Processing Buyer ISQ: ${commonSpec.spec_name}`);
+    
+    // Gemini से आए options लो
+    let optionsFromGemini = commonSpec.options
+      .filter(opt => !opt.toLowerCase().includes('no common options available'));
+    
+    console.log(`   Options from Gemini: ${optionsFromGemini.length}`);
+    
+    // अगर 8 से कम options हैं, तो Stage 1 से और लो
+    if (optionsFromGemini.length < 8) {
+      console.log(`   Need ${8 - optionsFromGemini.length} more options`);
+      
+      const stage1Spec = stage1Specs.find(s =>
+        s.spec_name === commonSpec.spec_name ||
+        isSemanticallySimilar(s.spec_name, commonSpec.spec_name)
+      );
+      
+      if (stage1Spec) {
+        // Stage 1 से unique options add करो
+        const additionalOptions = stage1Spec.options.filter(opt => {
+          // Check if option already exists in Gemini options
+          const exists = optionsFromGemini.some(geminiOpt => 
+            areOptionsStronglySimilar(geminiOpt, opt)
+          );
+          return !exists;
+        });
+        
+        // Add additional options
+        optionsFromGemini = [...optionsFromGemini, ...additionalOptions];
+        console.log(`   Added ${additionalOptions.length} options from Stage 1`);
+      }
+    }
+    
+    // 8 options तक limit करो
+    const finalOptions = optionsFromGemini.slice(0, 8);
+    console.log(`   ✅ Final: ${finalOptions.length} options`);
+    
+    buyerISQs.push({
+      name: commonSpec.spec_name,
+      options: finalOptions
+    });
+  }
+
+  console.log(`\n🎉 Generated ${buyerISQs.length} Buyer ISQs with 8 options each`);
+  buyerISQs.forEach((isq, i) => {
+    console.log(`  ${i+1}. ${isq.name}: ${isq.options.length} options`);
+  });
 
   return buyerISQs;
 }
