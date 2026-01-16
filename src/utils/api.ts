@@ -713,42 +713,39 @@ function generateFallbackStage1(): Stage1Output {
 
 // ==================== CORS FIXED VERSION ====================
 
-async function fetchURL(url: string): Promise<string> {
-  console.log(`🔗 Fetching URL: ${url}`);
-  
+// Add this function back (from your previous code)
+async function fetchWithImprovedExtractor(url: string): Promise<string> {
   const proxies = [
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&callback=?`,
+    url, // Try direct first
     `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     `https://proxy.cors.sh/${encodeURIComponent(url)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    url
   ];
 
   for (let i = 0; i < proxies.length; i++) {
     const proxyUrl = proxies[i];
     const isDirect = proxyUrl === url;
     
-    console.log(`  🔄 Attempt ${i + 1}/${proxies.length}: ${isDirect ? 'Direct' : 'Proxy'}`);
+    console.log(`    Trying ${isDirect ? 'direct' : 'proxy'} fetch...`);
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
       const response = await fetch(proxyUrl, {
         signal: controller.signal,
-        headers: !isDirect ? {
+        headers: isDirect ? {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
           'Accept-Encoding': 'gzip, deflate, br',
-          'Cache-Control': 'no-cache'
         } : {}
       });
       
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        console.warn(`  ⚠️ Attempt ${i + 1} failed with status: ${response.status}`);
+        console.warn(`    Status ${response.status}, trying next...`);
         continue;
       }
       
@@ -756,38 +753,234 @@ async function fetchURL(url: string): Promise<string> {
       
       if (proxyUrl.includes('allorigins.win')) {
         const data = await response.json();
-        html = data.contents || '';
+        html = data.contents || data || '';
       } else {
         html = await response.text();
       }
       
-      if (!html || html.trim().length === 0) {
-        console.warn(`  ⚠️ Attempt ${i + 1} returned empty content`);
+      if (!html || html.trim().length < 100) {
+        console.warn(`    Empty response, trying next...`);
         continue;
       }
       
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const unwantedSelectors = 'script, style, noscript, iframe, nav, header, footer, aside, form, button, input, select, textarea, svg, img, video, audio, canvas';
-      doc.querySelectorAll(unwantedSelectors).forEach(el => el.remove());
-      
-      let text = doc.body?.textContent || '';
-      
-      text = text
-        .replace(/\s+/g, ' ')
-        .trim()
-        .substring(0, 2000);
-      
-      console.log(`  ✅ Success! Got ${text.length} characters`);
-      return text;
+      console.log(`    ✓ Successfully fetched ${html.length} chars`);
+      return html;
       
     } catch (error) {
-      console.warn(`  ⚠️ Attempt ${i + 1} error:`, error.message);
+      console.warn(`    Error: ${error.message}, trying next...`);
       continue;
     }
   }
   
-  console.error(`❌ All attempts failed for URL: ${url}`);
-  return "";
+  throw new Error(`All fetch attempts failed for: ${url}`);
+}
+
+// Add these extraction functions back
+function extractImprovedSpecs(html: string): string {
+  if (!html) return '';
+  
+  // Step 1: Clean HTML (keep content)
+  let cleanHtml = cleanHTMLButKeepContent(html);
+  
+  // Step 2: Extract ALL tables
+  const allTables = extractAllTables(cleanHtml);
+  
+  // Step 3: Extract text content
+  const textContent = extractTextContent(cleanHtml);
+  
+  // Step 4: Combine intelligently
+  const result = combineContent(allTables, textContent);
+  
+  return result.trim();
+}
+
+function cleanHTMLButKeepContent(html: string): string {
+  // Remove scripts, styles, comments, but keep most content
+  html = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '');
+  
+  return html;
+}
+
+function extractAllTables(html: string): string {
+  const tables: string[] = [];
+  const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+  
+  let match;
+  while ((match = tableRegex.exec(html)) !== null) {
+    let table = match[1];
+    
+    // Clean the table
+    table = cleanTable(table);
+    
+    if (table.length > 20) {
+      tables.push(table);
+    }
+  }
+  
+  return tables.join('\n\n');
+}
+
+function cleanTable(tableHtml: string): string {
+  let table = tableHtml
+    .replace(/<tr[^>]*>/gi, '\n')
+    .replace(/<\/tr>/gi, '')
+    .replace(/<t[dh][^>]*>/gi, ' | ')
+    .replace(/<\/t[dh]>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .replace(/\|\s+\|/g, '|')
+    .trim();
+  
+  const rows = table.split('\n')
+    .map(row => row.trim())
+    .filter(row => row.length > 0);
+  
+  const cleanRows = rows.map(row => {
+    const cells = row.split('|')
+      .map(cell => cell.trim())
+      .filter(cell => cell.length > 0);
+    
+    return cells.join(' | ');
+  }).filter(row => row.length > 3);
+  
+  return cleanRows.join('\n');
+}
+
+function extractTextContent(html: string): string {
+  // Remove all tags to get text
+  let text = html.replace(/<[^>]+>/g, ' ');
+  
+  // Decode HTML entities
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&[a-z]+;/gi, ' ');
+  
+  // Remove extreme junk
+  text = removeExtremeJunk(text);
+  
+  return text;
+}
+
+function removeExtremeJunk(text: string): string {
+  // Remove phone numbers
+  text = text.replace(/(?:\+?\d[\d\s\-\(\)]{8,}\d)/g, '');
+  
+  // Remove emails
+  text = text.replace(/[\w\.-]+@[\w\.-]+\.\w+/g, '');
+  
+  // Remove unwanted phrases
+  const unwanted = [
+    'call us', 'contact us', 'email us',
+    'fill form', 'enquiry form', 'query form',
+    'download', 'price list', 'catalogue',
+    '©', 'copyright', 'all rights reserved',
+    'language:', 'english', 'hindi',
+    'pan india', 'andhra pradesh', 'mumbai, india'
+  ];
+  
+  unwanted.forEach(phrase => {
+    text = text.replace(new RegExp(phrase, 'gi'), '');
+  });
+  
+  return text;
+}
+
+function filterProductSpecs(text: string): string {
+  // Split into sentences/lines
+  const lines = text.split(/[\n.!?]+/)
+    .map(line => line.trim())
+    .filter(line => line.length > 10);
+  
+  // Filter for product-related content
+  const productLines = lines.filter(line => {
+    const lower = line.toLowerCase();
+    
+    // Check for product keywords
+    const hasProductKeywords = 
+      /\b(steel|metal|sheet|plate|coil|rod|bar|pipe|tube|grade|thickness|width|size|material|standard)\b/i.test(line) ||
+      /\b(carbon|stainless|alloy|mild|galvanized|astm|en|is|iso|a36|304|316)\b/i.test(line) ||
+      /\d+\s*[-~]\s*\d+\s*(mm|cm|m|inch)/i.test(line) ||
+      /\b\d+\s*(mm|cm|m|inch|ft|kg)\b/i.test(line);
+    
+    // Exclude contact/navigation
+    const notJunk = 
+      !/\b(call|phone|email|contact|whatsapp|click here|read more|buy now|shop now)\b/i.test(lower);
+    
+    return hasProductKeywords && notJunk;
+  });
+  
+  return productLines.join('\n');
+}
+
+function combineContent(tables: string, text: string): string {
+  let result = '';
+  
+  if (tables && tables.trim().length > 20) {
+    result += tables;
+  }
+  
+  if (text && text.trim().length > 20) {
+    if (result) result += '\n\n';
+    result += text;
+  }
+  
+  if (result.length < 50) {
+    console.log('Warning: Very little content, using fallback');
+    return extractFallbackContent(tables + ' ' + text);
+  }
+  
+  return removeExactDuplicates(result);
+}
+
+function extractFallbackContent(text: string): string {
+  const words = text.split(/\s+/)
+    .map(word => word.trim())
+    .filter(word => word.length > 2);
+  
+  const productWords = words.filter(word => {
+    const lower = word.toLowerCase();
+    return /(steel|metal|sheet|plate|grade|size|mm|astm|en|is|carbon|stainless|alloy|thickness|width|length)/i.test(lower);
+  });
+  
+  const uniqueWords = [...new Set(productWords)];
+  
+  if (uniqueWords.length > 0) {
+    return `Product specifications include: ${uniqueWords.join(', ')}`;
+  }
+  
+  return 'Product specifications could not be extracted from this page.';
+}
+
+function removeExactDuplicates(text: string): string {
+  const lines = text.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 5);
+  
+  const uniqueLines: string[] = [];
+  const seen = new Set<string>();
+  
+  lines.forEach(line => {
+    const key = line.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueLines.push(line);
+    }
+  });
+  
+  return uniqueLines.join('\n');
 }
 
 function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
@@ -810,7 +1003,7 @@ function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
           .split(/\s*\|\s*/)
           .map(opt => opt.trim())
           .filter(opt => opt.length > 0 && isRelevantOption(opt))
-          .slice(0, 8);
+          .slice(0, 10);
 
         if (configOptions.length > 0) {
           result.config = {
@@ -837,7 +1030,7 @@ function parseISQFromText(text: string): { config: ISQ; keys: ISQ[] } | null {
             .split(/\s*\|\s*/)
             .map(opt => opt.trim())
             .filter(opt => opt.length > 0 && isRelevantOption(opt))
-            .slice(0, 6);
+            .slice(0, 10);
 
           if (keyName && keyOptions.length > 0) {
             result.keys.push({
@@ -927,29 +1120,47 @@ export async function extractISQWithGemini(
   await sleep(2000);
 
   try {
-    console.log("🌐 Fetching URL contents...");
+    console.log("🌐 Fetching URL contents with IMPROVED extractor...");
+    
+    // ✅ STEP 1: Fetch ALL URLs completely first
     const urlContentsPromises = urls.map(async (url, index) => {
       console.log(`  📡 [${index + 1}/${urls.length}] Fetching: ${url}`);
-      const content = await fetchURL(url);
-      return { url, content, index };
+      try {
+        // Use improved fetch function
+        const content = await fetchWithImprovedExtractor(url);
+        console.log(`     Content length: ${content.length} chars`);
+        return { url, content, index, success: true };
+      } catch (error) {
+        console.log(`     Failed to fetch: ${error.message}`);
+        return { url, content: "", index, success: false };
+      }
     });
 
-    const results = await Promise.all(urlContentsPromises);
+    const fetchResults = await Promise.allSettled(urlContentsPromises);
+    
+    const successfulFetches: Array<{url: string, content: string, index: number}> = [];
+    const failedFetches: string[] = [];
 
-    const urlContents: string[] = [];
-    const successfulFetches: number[] = [];
-
-    results.forEach(result => {
-      urlContents.push(result.content);
-      if (result.content && result.content.length > 0) {
-        successfulFetches.push(result.index + 1);
+    fetchResults.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value.success && result.value.content) {
+        successfulFetches.push({
+          url: result.value.url,
+          content: result.value.content,
+          index: result.value.index
+        });
+      } else {
+        failedFetches.push(urls[index]);
       }
     });
 
     console.log(`📊 Fetch results: ${successfulFetches.length}/${urls.length} successful`);
+    
+    if (failedFetches.length > 0) {
+      console.log(`⚠️ Failed URLs: ${failedFetches.join(', ')}`);
+    }
 
     if (successfulFetches.length === 0) {
-      console.warn("⚠️ No content fetched");
+      console.warn("⚠️ No content fetched from any URL");
       return {
         config: { name: "", options: [] },
         keys: [],
@@ -957,9 +1168,56 @@ export async function extractISQWithGemini(
       };
     }
 
-    const prompt = buildISQExtractionPrompt(input, urls, urlContents);
+    // ✅ STEP 2: Process and filter the fetched data
+    const processedContents = successfulFetches.map(({url, content, index}) => {
+      console.log(`  🔍 Processing URL ${index + 1}: ${url}`);
+      
+      // Apply improved extraction logic
+      const extractedContent = extractImprovedSpecs(content);
+      
+      // Filter to keep only relevant product specs
+      const filteredContent = filterProductSpecs(extractedContent);
+      
+      console.log(`     After processing: ${filteredContent.length} chars`);
+      
+      return {
+        url,
+        content: filteredContent,
+        index
+      };
+    });
 
-    console.log("🤖 Calling Gemini API...");
+    // ✅ STEP 3: Prepare data for Gemini (first 1500 chars)
+    const geminiReadyContents = processedContents
+  .filter(({content}) => content && content.trim().length > 50)  // ✅ Add this line - minimum 50 chars
+  .map(({url, content, index}) => {
+    // Take only first 1500 characters
+    const truncatedContent = content.substring(0, 2000);
+      
+      if (content.length > 2000) {
+        console.log(`  ✂️ URL ${index + 1}: Truncated from ${content.length} to 1500 chars`);
+      }
+      
+      return {
+        url,
+        content: truncatedContent,
+        originalLength: content.length
+      };
+    });
+
+    // ✅ STEP 4: Show summary before sending to Gemini
+    console.log("\n📦 Content summary for Gemini:");
+    geminiReadyContents.forEach(({url, content, originalLength}, index) => {
+      console.log(`  [${index + 1}] ${url}`);
+      console.log(`     Original: ${originalLength} chars → Gemini: ${content.length} chars`);
+      console.log(`     Preview: "${content.substring(0, 100)}..."`);
+      console.log();
+    });
+
+    // ✅ STEP 5: Build prompt with truncated content
+    const prompt = buildISQExtractionPrompt(input, geminiReadyContents);
+
+    console.log("🤖 Calling Gemini API with cleaned content...");
 
     const response = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${STAGE2_API_KEY}`,
@@ -1028,20 +1286,36 @@ export async function extractISQWithGemini(
 
 function buildISQExtractionPrompt(
   input: InputData,
-  urls: string[],
-  contents: string[]
+  urlContents: Array<{url: string, content: string}>
 ): string {
-  const urlsText = urls
-    .map((url, i) => `URL ${i + 1}: ${url}\nContent: ${contents[i].substring(0, 1000)}...`)
-    .join("\n\n");
+  // Filter out items with no content
+  const validContents = urlContents.filter(item => 
+    item.content && 
+    item.content.trim().length > 50  // Change 0 to 50 for minimum content
+  );
 
-  const mcatName = input.mcats.map((m) => m.mcat_name).join(", ");
+  if (validContents.length === 0) {
+    console.error("❌ All URL contents are empty");
+    return "No content available from any URL.";
+  }
+
+  const mcatName = input.mcats[0]?.mcat_name || "the product";
+  const urlCount = validContents.length;
+
+  const urlsText = validContents
+    .map((item, i) => {
+      const content = item.content || "";
+      const contentLength = content.length;
+      
+      return `URL ${i + 1}: ${item.url}\nContent (${contentLength} chars):\n${content}\n`;
+    })
+    .join("\n---\n");
 
   return `You are an AI that extracts ONLY RELEVANT product specifications from multiple URLs.
 
 Extract specifications from these URLs for: ${mcatName}
 
-IMPORTANT: You have been provided with ${urls.length} URLs. You MUST analyze ALL ${urls.length} URLs and extract specifications that appear across them.
+IMPORTANT: You have been provided with ${urlCount.length} URLs. You MUST analyze ALL ${urlCount.length} URLs and extract specifications that appear across them.
 
 URLs:
 ${urlsText}
@@ -1057,25 +1331,36 @@ CRITICAL RELEVANCE RULES:
    - Generic system settings or UI options
 3. DO NOT include specifications already in the MCAT name
 4. DO NOT include "Other" or "etc." or "N/A" options
-5. ONLY include specs that appear multiple times across URLs
-6. You MUST extract at least 2 relevant specifications if they exist across the URLs
+5. If URLs contain multiple variants (e.g., 304, 304L, 304H), include ALL of them as separate options
+6. Try to ignore specification like Production Process/Manufacturing Process if there are other important specifications present like Thickness, Width, Dimension. Include this specifications only if there are not enough specifications.
+
+REPEAT VS NON-REPEAT SELECTION LOGIC (VERY IMPORTANT):
+1. Prefer specifications that appear in multiple URLs.
+2. If enough relevant specs are not found (1 CONFIG + up to 3 KEY),
+   include highly relevant specs even if they appear in only one URL.
+3. Allow non-repeated specs ONLY when they are clearly relevant.
+4. Combine options of the same specification from different URLs,
+   even if exact options do not repeat.
 
 IMPORTANT RANGE HANDLING RULES:
-1. If you find overlapping ranges (e.g., "0.14-2.00 mm" and "0.25-2.00 mm"), 
-   keep only the WIDER range ("0.14-2.00 mm")
-2. If a smaller range is COMPLETELY within a larger range, use ONLY the larger range
-3. For thickness/ranges, merge overlapping ranges
-4. Example: "0.14-2.00 mm" and "0.25-2.00 mm" → keep "0.14-2.00 mm"
-5. Remove redundant ranges that are subsets of other ranges
+1. If the same specification has ranges in multiple URLs, return ONLY the overlapping part
+2. Do NOT expand ranges to minimum or maximum values
+3. Do NOT split ranges into multiple parts
+4. If a range appears in only one URL, include it as-is
+5. Final output must contain non-overlapping ranges only
 6. DO NOT use "Range" as a specification name. Use the actual specification name like "Thickness", "Diameter", etc.
+Example: 
+Suppose URL 1: 20-100 mm
+        URL 2: 50-200 mm
+        Final Option will be overlapping range: 50-100 mm
 
 INSTRUCTIONS:
-1. Extract all RELEVANT specifications from ALL ${urls.length} URLs provided
+1. Extract all RELEVANT specifications from ALL ${urlCount.length} URLs provided
 2. Combine equivalent specifications and options
 3. Select 1 CONFIG specification IF FOUND (highest frequency, most price-affecting)
 4. Select AT LEAST 2 KEY specifications if they exist across URLs (up to 3 maximum)
 5. Options must be the ones most repeated across URLs
-6. Maximum 8 options per CONFIG specification, 6 options per KEY specification
+6. Maximum 10 options per CONFIG specification, 10 options per KEY specification
 7. If you cannot find enough relevant specs, output what you find (don't make up specs)
 8. CRITICAL: You MUST try to extract at least 2 relevant specifications total (1 config + at least 1 key, OR 2+ keys if no config found)
 9. Analyze ALL URLs - do not stop after finding specs in just 1 or 2 URLs
