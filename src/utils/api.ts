@@ -2106,7 +2106,6 @@ export async function generateBuyerISQsWithGemini(
       }
     }
     
-    // 8 options तक limit करो
     const finalOptions = optionsFromGemini.slice(0, 8);
     console.log(`   ✅ Final: ${finalOptions.length} options`);
     
