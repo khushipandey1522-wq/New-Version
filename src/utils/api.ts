@@ -2060,85 +2060,25 @@ export async function generateBuyerISQsWithGemini(
   commonSpecs: Array<{ spec_name: string; options: string[]; category: string }>,
   stage1Specs: { spec_name: string; options: string[]; tier?: string }[]
 ): Promise<ISQ[]> {
-  console.log('🚀 Stage 3: Generating Buyer ISQs with Gemini...');
+  console.log('🚀 Stage 3: Generating Buyer ISQs DIRECT from Gemini...');
 
   if (commonSpecs.length === 0) {
     console.log('⚠️ No common specs, no buyer ISQs');
     return [];
   }
 
-  const topSpecs = commonSpecs.slice(0, 2);
-  console.log(`📦 Taking first ${topSpecs.length} common specs for Buyer ISQs`);
+  // Take first 2 specs from Gemini's common specs
+  const buyerISQs = commonSpecs.slice(0, 2).map(spec => ({
+    name: spec.spec_name,
+    options: spec.options
+      .filter(opt => !opt.toLowerCase().includes('no common options available'))
+      .slice(0, 8) // Just limit to 8 options
+  }));
 
-  const buyerISQs: ISQ[] = [];
+  console.log(`🎉 Generated ${buyerISQs.length} Buyer ISQs DIRECTLY from Gemini`);
+  console.log('Buyer ISQs:', buyerISQs);
 
-  for (const commonSpec of topSpecs) {
-    console.log(`\n🔧 Processing Buyer ISQ: ${commonSpec.spec_name}`);
-
-    const commonOptions = commonSpec.options.filter(opt =>
-      !opt.toLowerCase().includes('no common options available')
-    );
-
-    console.log(`   Common options count: ${commonOptions.length}`);
-
-    const stage1Spec = stage1Specs.find(s =>
-      s.spec_name === commonSpec.spec_name ||
-      isSemanticallySimilar(s.spec_name, commonSpec.spec_name)
-    );
-
-    if (!stage1Spec) {
-      console.log(`   No matching Stage 1 spec found, using common options only`);
-      const finalOptions = cleanBuyerISQOptions(commonOptions).slice(0, 8);
-      buyerISQs.push({
-        name: commonSpec.spec_name,
-        options: finalOptions
-      });
-      continue;
-    }
-
-    console.log(`   Found Stage 1 spec with ${stage1Spec.options.length} options`);
-
-    if (commonOptions.length >= 8) {
-      console.log(`   Already have 8+ common options, using first 8`);
-      const finalOptions = cleanBuyerISQOptions(commonOptions).slice(0, 8);
-      buyerISQs.push({
-        name: commonSpec.spec_name,
-        options: finalOptions
-      });
-      continue;
-    }
-
-    console.log(`   Need more options (have ${commonOptions.length}), calling Gemini...`);
-
-    const enhancedOptions = await enhanceOptionsWithGemini(
-      commonSpec.spec_name,
-      commonOptions,
-      stage1Spec.options,
-      8 - commonOptions.length
-    );
-
-    const finalOptions = cleanBuyerISQOptions([...commonOptions, ...enhancedOptions]).slice(0, 8);
-
-    console.log(`   ✅ Final: ${finalOptions.length} options (${commonOptions.length} common + ${enhancedOptions.length} from Stage 1)`);
-
-    buyerISQs.push({
-      name: commonSpec.spec_name,
-      options: finalOptions
-    });
-  }
-
-  console.log(`\n🎉 Generated ${buyerISQs.length} Buyer ISQs`);
-  buyerISQs.forEach((isq, i) => {
-    console.log(`  ${i+1}. ${isq.name}: ${isq.options.length} options`);
-  });
-
-  // Remove duplicate specs with identical options
-  const uniqueBuyerISQs = removeDuplicateISQs(buyerISQs);
-  if (uniqueBuyerISQs.length < buyerISQs.length) {
-    console.log(`🧹 Removed ${buyerISQs.length - uniqueBuyerISQs.length} duplicate Buyer ISQs with same options`);
-  }
-
-  return uniqueBuyerISQs;
+  return buyerISQs;
 }
 
 function removeDuplicateISQs(isqs: ISQ[]): ISQ[] {
