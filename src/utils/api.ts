@@ -1690,9 +1690,7 @@ export async function findCommonSpecsWithGemini(
 
   if (geminiResult.length > 0) {
     console.log(`✅ Gemini found ${geminiResult.length} common specs`);
-    const dedupedSpecs = deduplicateCommonSpecs(geminiResult);
-    console.log(`✅ After deduplication: ${dedupedSpecs.length} specs`);
-    return { commonSpecs: dedupedSpecs };
+    return { commonSpecs: geminiResult };
   }
 
   // 2. If Gemini returns nothing, try local matching
