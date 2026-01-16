@@ -1332,7 +1332,7 @@ CRITICAL RELEVANCE RULES:
 3. DO NOT include specifications already in the MCAT name
 4. DO NOT include "Other" or "etc." or "N/A" options
 5. If URLs contain multiple variants (e.g., 304, 304L, 304H), include ALL of them as separate options
-6. If "${mcatName}" is very generic try to find specification and options related to type or form
+6. If "${mcatName}" is very generic try to find specification and options related to Prduct type or Product form
 7. Try to ignore specification like Production Process/Manufacturing Process if there are other important specifications present like Thickness, Width, Dimension. Include this specifications only if there are not enough specifications.
 
 REPEAT VS NON-REPEAT SELECTION LOGIC (VERY IMPORTANT):
