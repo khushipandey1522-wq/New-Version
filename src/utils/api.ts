@@ -1140,44 +1140,22 @@ export async function extractISQWithGemini(
     }
 
 // ✅ STEP 2: Process and filter the fetched data
+// ✅ STEP 2: Process and filter the fetched data
 const processedContents = successfulFetches.map(({url, content, index}) => {
   console.log(`  🔍 Processing URL ${index + 1}: ${url}`);
   console.log(`     Original content length: ${content.length} chars`);
   
-  // CRITICAL: अगर content 1000 से कम chars है, तो NO PROCESSING AT ALL
+  // ULTIMATE FIX: अगर content 1000 से कम chars है, तो ZERO PROCESSING
   if (content.length < 1000) {
-    console.log(`     ⚠️ SHORT CONTENT (< 1000 chars) - SKIPPING ALL PROCESSING`);
+    console.log(`     ⚠️ SHORT CONTENT (< 1000 chars) - SENDING RAW CONTENT AS-IS`);
     
-    // सिर्फ HTML tags और extra spaces हटाओ
-    let cleanedContent = content;
+    // Preview देखो क्या है content में
+    console.log(`     First 200 chars: "${content.substring(0, 200)}"`);
     
-    // Try to preserve text between tags
-    const textMatches = content.match(/>([^<]{3,})</g);
-    if (textMatches && textMatches.length > 0) {
-      cleanedContent = textMatches
-        .map(match => match.replace(/[<>]/g, '').trim())
-        .filter(text => text.length > 0)
-        .join(' ');
-      console.log(`     Extracted ${cleanedContent.length} chars from between tags`);
-    } else {
-      // Fallback: Simple HTML tag removal
-      cleanedContent = content
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      console.log(`     Simple tag removal: ${cleanedContent.length} chars`);
-    }
-    
-    // ✅ NO filterProductSpecs CALL - SKIP COMPLETELY
-    console.log(`     FINAL (NO filtering): ${cleanedContent.length} chars`);
-    
-    if (cleanedContent.length > 0) {
-      console.log(`     Preview: "${cleanedContent.substring(0, 100)}..."`);
-    }
-    
+    // ✅ NO PROCESSING AT ALL - RAW CONTENT SEND करो
     return {
       url,
-      content: cleanedContent,
+      content: content, // ORIGINAL CONTENT, NO CHANGES
       index
     };
   } else {
