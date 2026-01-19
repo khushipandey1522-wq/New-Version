@@ -1140,38 +1140,58 @@ export async function extractISQWithGemini(
     }
 
     // ✅ STEP 2: Process and filter the fetched data
-    // ✅ STEP 2: Process and filter the fetched data
+// ✅ STEP 2: Process and filter the fetched data
 const processedContents = successfulFetches.map(({url, content, index}) => {
   console.log(`  🔍 Processing URL ${index + 1}: ${url}`);
+  console.log(`     Original content length: ${content.length} chars`);
   
-  // CRITICAL CHANGE: अगर original content < 1000 chars है, तो processing skip करो
+  // CRITICAL: अगर content 1000 से कम chars है, तो NO PROCESSING AT ALL
   if (content.length < 1000) {
-    console.log(`     ⚠️ SHORT CONTENT (${content.length} chars) - SKIPPING PROCESSING`);
+    console.log(`     ⚠️ SHORT CONTENT (< 1000 chars) - SKIPPING ALL PROCESSING`);
     
-    // थोड़ा सा basic cleaning करो लेकिन heavy filtering नहीं
-    const basicCleanContent = content
-      .replace(/<[^>]+>/g, ' ')  // Remove HTML tags
-      .replace(/\s+/g, ' ')      // Multiple spaces to single space
-      .trim();
+    // सिर्फ HTML tags और extra spaces हटाओ
+    let cleanedContent = content;
     
-    console.log(`     After basic cleaning: ${basicCleanContent.length} chars`);
+    // Try to preserve text between tags
+    const textMatches = content.match(/>([^<]{3,})</g);
+    if (textMatches && textMatches.length > 0) {
+      cleanedContent = textMatches
+        .map(match => match.replace(/[<>]/g, '').trim())
+        .filter(text => text.length > 0)
+        .join(' ');
+      console.log(`     Extracted ${cleanedContent.length} chars from between tags`);
+    } else {
+      // Fallback: Simple HTML tag removal
+      cleanedContent = content
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      console.log(`     Simple tag removal: ${cleanedContent.length} chars`);
+    }
+    
+    // ✅ NO filterProductSpecs CALL - SKIP COMPLETELY
+    console.log(`     FINAL (NO filtering): ${cleanedContent.length} chars`);
+    
+    if (cleanedContent.length > 0) {
+      console.log(`     Preview: "${cleanedContent.substring(0, 100)}..."`);
+    }
     
     return {
       url,
-      content: basicCleanContent,
+      content: cleanedContent,
       index
     };
   } else {
-    // Original content >= 1000 chars है, तो full processing करो
-    console.log(`     LONG CONTENT (${content.length} chars) - APPLYING FULL PROCESSING`);
+    // Original content >= 1000 chars है, तो full processing WITH filtering
+    console.log(`     LONG CONTENT (≥ 1000 chars) - APPLYING FULL PROCESSING`);
     
     // Apply improved extraction logic
     const extractedContent = extractImprovedSpecs(content);
+    console.log(`     After extractImprovedSpecs: ${extractedContent.length} chars`);
     
-    // Filter to keep only relevant product specs
+    // ✅ ONLY for long content: Apply filtering
     const filteredContent = filterProductSpecs(extractedContent);
-    
-    console.log(`     After full processing: ${filteredContent.length} chars`);
+    console.log(`     After filterProductSpecs: ${filteredContent.length} chars`);
     
     return {
       url,
@@ -1180,7 +1200,6 @@ const processedContents = successfulFetches.map(({url, content, index}) => {
     };
   }
 });
-
     // ✅ STEP 3: Prepare data for Gemini (first 1500 chars)
     const geminiReadyContents = processedContents
   .filter(({content}) => content && content.trim().length > 50)  // ✅ Add this line - minimum 50 chars
