@@ -1140,7 +1140,6 @@ export async function extractISQWithGemini(
     }
 
 // ✅ STEP 2: Process and filter the fetched data
-// ✅ STEP 2: Process and filter the fetched data
 const processedContents = successfulFetches.map(({url, content, index}) => {
   console.log(`  🔍 Processing URL ${index + 1}: ${url}`);
   console.log(`     Original content length: ${content.length} chars`);
