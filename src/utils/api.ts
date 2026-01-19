@@ -1135,23 +1135,46 @@ export async function extractISQWithGemini(
     }
 
     // ✅ STEP 2: Process and filter the fetched data
-    const processedContents = successfulFetches.map(({url, content, index}) => {
-      console.log(`  🔍 Processing URL ${index + 1}: ${url}`);
-      
-      // Apply improved extraction logic
-      const extractedContent = extractImprovedSpecs(content);
-      
-      // Filter to keep only relevant product specs
-      const filteredContent = filterProductSpecs(extractedContent);
-      
-      console.log(`     After processing: ${filteredContent.length} chars`);
-      
-      return {
-        url,
-        content: filteredContent,
-        index
-      };
-    });
+    // ✅ STEP 2: Process and filter the fetched data
+const processedContents = successfulFetches.map(({url, content, index}) => {
+  console.log(`  🔍 Processing URL ${index + 1}: ${url}`);
+  
+  // CRITICAL CHANGE: अगर original content < 1000 chars है, तो processing skip करो
+  if (content.length < 1000) {
+    console.log(`     ⚠️ SHORT CONTENT (${content.length} chars) - SKIPPING PROCESSING`);
+    
+    // थोड़ा सा basic cleaning करो लेकिन heavy filtering नहीं
+    const basicCleanContent = content
+      .replace(/<[^>]+>/g, ' ')  // Remove HTML tags
+      .replace(/\s+/g, ' ')      // Multiple spaces to single space
+      .trim();
+    
+    console.log(`     After basic cleaning: ${basicCleanContent.length} chars`);
+    
+    return {
+      url,
+      content: basicCleanContent,
+      index
+    };
+  } else {
+    // Original content >= 1000 chars है, तो full processing करो
+    console.log(`     LONG CONTENT (${content.length} chars) - APPLYING FULL PROCESSING`);
+    
+    // Apply improved extraction logic
+    const extractedContent = extractImprovedSpecs(content);
+    
+    // Filter to keep only relevant product specs
+    const filteredContent = filterProductSpecs(extractedContent);
+    
+    console.log(`     After full processing: ${filteredContent.length} chars`);
+    
+    return {
+      url,
+      content: filteredContent,
+      index
+    };
+  }
+});
 
     // ✅ STEP 3: Prepare data for Gemini (first 1500 chars)
     const geminiReadyContents = processedContents
