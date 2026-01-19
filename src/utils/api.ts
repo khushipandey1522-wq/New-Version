@@ -353,7 +353,7 @@ function validateAndCleanParsedJSON(parsed: any): any {
                  cleanOpt.length < 50 &&
                  cleanOpt.toLowerCase() !== result.config.name.toLowerCase();
         })
-        .slice(0, 10);
+        .slice(0, 8);
     }
   }
   
@@ -371,7 +371,7 @@ function validateAndCleanParsedJSON(parsed: any): any {
         options: Array.isArray(key.options) 
           ? key.options
               .filter((opt: any) => typeof opt === 'string' && opt.trim().length > 0)
-              .slice(0, 10)
+              .slice(0, 8)
           : []
       }))
       .filter((key: any) => key.options.length > 0)
