@@ -1332,7 +1332,7 @@ CRITICAL RELEVANCE RULES:
 6. If "${mcatName}" is very generic try to find specification and options related to Prduct type or Product form but don't every specification like Finish, Grade as Type 
 7. Try to ignore specification like Production Process/Manufacturing Process if there are other important specifications present like Thickness, Width, Dimension. Include this specifications only if there are not enough specifications.
 
-ONTEXT:
+CONTEXT:
 1. Some URLs returned very short content (< 1000 chars)
 2. Short content was sent WITHOUT any processing - it may contain HTML, scripts, etc.
 3. Your job is to extract ANY product specifications you can find, even from messy HTML
