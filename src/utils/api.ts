@@ -247,40 +247,6 @@ function extractAnyJSONPossible(text: string): any {
   return extractFromTextManually(cleaned);
 }
 
-// NEW FUNCTION: Remove spec name from options arrays
-function removeSpecNameFromOptions(text: string): string {
-  // Find config name
-  const configNameMatch = text.match(/"name"\s*:\s*"([^"]+)"/);
-  if (!configNameMatch) return text;
-  
-  const configName = configNameMatch[1];
-  console.log(`🔍 Found config name: "${configName}"`);
-  
-  // Find options array and remove config name from it
-  const optionsRegex = /"options"\s*:\s*\[([\s\S]*?)\]/g;
-  let result = text;
-  let match;
-  
-  while ((match = optionsRegex.exec(text)) !== null) {
-    const optionsText = match[1];
-    const optionsArray = optionsText.split(',');
-    
-    // Filter out the config name
-    const filteredOptions = optionsArray.filter(opt => {
-      const cleanOpt = opt.trim().replace(/["']/g, '');
-      return cleanOpt.toLowerCase() !== configName.toLowerCase();
-    });
-    
-    // Replace if we filtered something out
-    if (filteredOptions.length < optionsArray.length) {
-      const newOptionsText = filteredOptions.join(',');
-      result = result.replace(optionsText, newOptionsText);
-      console.log(`🔧 Removed "${configName}" from options array`);
-    }
-  }
-  
-  return result;
-}
 
 // NEW FUNCTION: Fix incomplete JSON
 function fixIncompleteJSON(jsonStr: string): string | null {
