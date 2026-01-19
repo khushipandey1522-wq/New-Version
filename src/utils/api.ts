@@ -220,7 +220,7 @@ function extractAnyJSONPossible(text: string): any {
   
   // FIX: Remove spec name from options arrays
   // cleaned = removeSpecNameFromOptions(cleaned);
-  
+    cleaned = cleaned;
   // TRY 1: Direct parse
   try {
     const parsed = JSON.parse(cleaned);
