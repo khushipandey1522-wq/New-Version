@@ -350,8 +350,8 @@ function validateAndCleanParsedJSON(parsed: any): any {
           if (typeof opt !== 'string') return false;
           const cleanOpt = opt.trim();
           return cleanOpt.length > 0 && 
-                 cleanOpt.length < 50 &&
-                 cleanOpt.toLowerCase() !== result.config.name.toLowerCase();
+                 cleanOpt.length < 50,
+                 //cleanOpt.toLowerCase() !== result.config.name.toLowerCase();
         })
         .slice(0, 8);
     }
