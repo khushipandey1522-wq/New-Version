@@ -868,7 +868,7 @@ function filterProductSpecs(text: string): string {
 
   if (text.length < 200) {
     console.log(`  🛑 SKIPPING filterProductSpecs - text too short (${text.length} chars)`);
-    return text; // पूरा text return करो
+    return text; 
   }
   // Split into sentences/lines
   const lines = text.split(/[\n.!?]+/)
