@@ -1300,9 +1300,17 @@ function buildISQExtractionPrompt(
     .map((item, i) => {
       const content = item.content || "";
       const contentLength = content.length;
-      
-      return `URL ${i + 1}: ${item.url}\nContent (${contentLength} chars):\n${content}\n`;
-    })
+
+// NEW: Processing status बताओ
+    const processingNote = contentLength < 1000 ? 
+      "⚠️ SHORT CONTENT: Sent with MINIMAL processing (basic cleaning only)" : 
+      `✓ LONG CONTENT: Applied FULL processing including filtering`;
+    
+    // NEW: Always show full processed content (no truncation here)
+    const displayContent = content;
+    
+    return `URL ${i + 1}: ${item.url}\n${processingNote}\nContent (${contentLength} chars):\n${displayContent}\n`;
+  })
     .join("\n---\n");
 
   return `You are an AI that extracts ONLY RELEVANT product specifications from multiple URLs.
